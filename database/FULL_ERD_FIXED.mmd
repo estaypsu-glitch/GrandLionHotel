@@ -1,0 +1,161 @@
+erDiagram
+    %% Admin exclusively manages room records in the system.
+    %% Staff access is limited to dashboard, arrivals, and bookings.
+    ADMINS {
+        bigint admin_id PK
+        string name
+        string email
+        string google_id
+        string phone
+        string address_line
+        string city
+        string province
+        string country
+        datetime email_verified_at
+        string password
+        datetime password_changed_at
+        string remember_token
+        datetime created_at
+        datetime updated_at
+    }
+
+    STAFF {
+        bigint staff_id PK
+        bigint admin_id FK
+        string name
+        string email
+        string google_id
+        string phone
+        string address_line
+        string city
+        string province
+        string country
+        datetime email_verified_at
+        string password
+        datetime password_changed_at
+        string remember_token
+        datetime created_at
+        datetime updated_at
+    }
+
+    CUSTOMERS {
+        bigint customer_id PK
+        string name
+        string email
+        string google_id
+        string phone
+        string address_line
+        string city
+        string province
+        string country
+        datetime email_verified_at
+        string password
+        datetime password_changed_at
+        string remember_token
+        datetime created_at
+        datetime updated_at
+    }
+
+    ROOM_STATUS {
+        bigint room_status_id PK
+        string name
+        string slug
+        string description
+        datetime created_at
+        datetime updated_at
+    }
+
+    ROOMS {
+        bigint room_id PK
+        string name
+        string type
+        string view_type
+        text description
+        decimal price_per_night
+        int capacity
+        string image
+        bigint room_status_id FK
+        bigint admin_id FK
+        datetime status_updated_at
+        datetime created_at
+        datetime updated_at
+    }
+
+    BOOKINGS {
+        bigint booking_id PK
+        bigint customer_id FK
+        bigint room_id FK
+        date check_in
+        date check_out
+        string status
+        string notes
+        datetime actual_check_in_at
+        datetime actual_check_out_at
+        bigint staff_id FK
+        text staff_notes
+        datetime created_at
+        datetime updated_at
+    }
+
+    BOOKING_GUEST_DETAILS {
+        bigint guest_detail_id PK
+        bigint booking_id FK
+        string first_name
+        string last_name
+        string email
+        string phone
+        string address_line
+        string street_address_line_2
+        string city
+        string province
+        string postal_code
+        int adults
+        int kids
+        string payment_preference
+        bigint staff_id FK
+        datetime created_at
+        datetime updated_at
+    }
+
+    BOOKING_DISCOUNTS {
+        bigint booking_discount_id PK
+        bigint booking_id FK
+        string discount_type
+        string discount_id
+        string discount_id_photo_path
+        datetime created_at
+        datetime updated_at
+    }
+
+    PAYMENTS {
+        bigint payment_id PK
+        bigint booking_id FK
+        decimal amount
+        string method
+        string status
+        string source
+        string qr_reference
+        string customer_reference
+        string payment_proof_path
+        decimal original_amount
+        decimal discount_rate
+        decimal discount_amount
+        string transaction_reference
+        datetime paid_at
+        datetime verified_at
+        bigint staff_id FK
+        datetime created_at
+        datetime updated_at
+    }
+
+    ADMINS ||--o{ STAFF : creates
+    ADMINS ||--o{ ROOMS : updates
+    CUSTOMERS ||--o{ BOOKINGS : makes
+    STAFF ||--o{ BOOKINGS : assigned_to
+    STAFF ||--o{ BOOKING_GUEST_DETAILS : encodes
+    STAFF ||--o{ PAYMENTS : verifies
+    ROOM_STATUS ||--o{ ROOMS : defines
+    ROOMS ||--o{ BOOKINGS : reserved_for
+    BOOKINGS ||--|| BOOKING_GUEST_DETAILS : has
+    BOOKINGS ||--o| BOOKING_DISCOUNTS : includes
+    BOOKINGS ||--|| PAYMENTS : has
