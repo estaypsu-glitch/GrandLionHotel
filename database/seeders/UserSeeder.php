@@ -10,11 +10,14 @@ class UserSeeder extends Seeder
 {
     public function run(): void
     {
+        $defaultPassword = (string) env('SEED_DEFAULT_PASSWORD', 'password');
+
         Admin::updateOrCreate(
-            ['email' => 'admin@hotel.test'],
+            ['email' => (string) env('SEED_ADMIN_EMAIL', 'admin@hotel.test')],
             [
-                'name' => 'Admin User',
-                'password' => Hash::make('password'),
+                'name' => (string) env('SEED_ADMIN_NAME', 'Admin User'),
+                'phone' => (string) env('SEED_ADMIN_PHONE', '09170000001'),
+                'password' => Hash::make((string) env('SEED_ADMIN_PASSWORD', $defaultPassword)),
             ]
         );
     }
