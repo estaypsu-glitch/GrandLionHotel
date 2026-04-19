@@ -71,25 +71,55 @@ return new class extends Migration
 
     private function backfillStandaloneAccountColumns(): void
     {
+        $usersById = DB::table('users')
+            ->get([
+                'id',
+                'name',
+                'email',
+                'google_id',
+                'phone',
+                'address_line',
+                'city',
+                'province',
+                'country',
+                'email_verified_at',
+                'password',
+                'password_changed_at',
+                'remember_token',
+            ])
+            ->keyBy('id');
+
         foreach (['admins', 'staff', 'customers'] as $tableName) {
-            DB::statement("
-                UPDATE {$tableName} role_table
-                INNER JOIN users u ON u.id = role_table.user_id
-                SET
-                    role_table.name = u.name,
-                    role_table.email = u.email,
-                    role_table.google_id = u.google_id,
-                    role_table.phone = u.phone,
-                    role_table.address_line = u.address_line,
-                    role_table.city = u.city,
-                    role_table.province = u.province,
-                    role_table.country = u.country,
-                    role_table.email_verified_at = u.email_verified_at,
-                    role_table.password = u.password,
-                    role_table.password_changed_at = u.password_changed_at,
-                    role_table.remember_token = u.remember_token
-                WHERE role_table.user_id IS NOT NULL
-            ");
+            DB::table($tableName)
+                ->whereNotNull('user_id')
+                ->select(['id', 'user_id'])
+                ->orderBy('id')
+                ->chunkById(200, function ($accounts) use ($tableName, $usersById): void {
+                    foreach ($accounts as $account) {
+                        $user = $usersById->get($account->user_id);
+
+                        if ($user === null) {
+                            continue;
+                        }
+
+                        DB::table($tableName)
+                            ->where('id', $account->id)
+                            ->update([
+                                'name' => $user->name,
+                                'email' => $user->email,
+                                'google_id' => $user->google_id,
+                                'phone' => $user->phone,
+                                'address_line' => $user->address_line,
+                                'city' => $user->city,
+                                'province' => $user->province,
+                                'country' => $user->country,
+                                'email_verified_at' => $user->email_verified_at,
+                                'password' => $user->password,
+                                'password_changed_at' => $user->password_changed_at,
+                                'remember_token' => $user->remember_token,
+                            ]);
+                    }
+                }, 'id');
         }
     }
 
@@ -128,47 +158,90 @@ return new class extends Migration
 
     private function backfillDirectReferenceColumns(): void
     {
-        DB::statement("
-            UPDATE bookings b
-            INNER JOIN customers c ON c.user_id = b.user_id
-            SET b.customer_id = c.id
-            WHERE b.user_id IS NOT NULL
-        ");
+        $customerIdsByUserId = DB::table('customers')
+            ->whereNotNull('user_id')
+            ->pluck('id', 'user_id');
+        $staffIdsByUserId = DB::table('staff')
+            ->whereNotNull('user_id')
+            ->pluck('id', 'user_id');
 
-        DB::statement("
-            UPDATE bookings b
-            INNER JOIN staff s ON s.user_id = b.handled_by_staff_id
-            SET b.handled_by_staff_ref = s.id
-            WHERE b.handled_by_staff_id IS NOT NULL
-        ");
+        DB::table('bookings')
+            ->select(['id', 'user_id', 'handled_by_staff_id', 'assigned_staff_id'])
+            ->orderBy('id')
+            ->chunkById(200, function ($bookings) use ($customerIdsByUserId, $staffIdsByUserId): void {
+                foreach ($bookings as $booking) {
+                    $updates = [];
 
-        DB::statement("
-            UPDATE bookings b
-            INNER JOIN staff s ON s.user_id = b.assigned_staff_id
-            SET b.assigned_staff_ref = s.id
-            WHERE b.assigned_staff_id IS NOT NULL
-        ");
+                    if ($booking->user_id !== null && isset($customerIdsByUserId[$booking->user_id])) {
+                        $updates['customer_id'] = $customerIdsByUserId[$booking->user_id];
+                    }
 
-        DB::statement("
-            UPDATE booking_guest_details bgd
-            INNER JOIN staff s ON s.user_id = bgd.created_by_staff_id
-            SET bgd.created_by_staff_ref = s.id
-            WHERE bgd.created_by_staff_id IS NOT NULL
-        ");
+                    if ($booking->handled_by_staff_id !== null && isset($staffIdsByUserId[$booking->handled_by_staff_id])) {
+                        $updates['handled_by_staff_ref'] = $staffIdsByUserId[$booking->handled_by_staff_id];
+                    }
 
-        DB::statement("
-            UPDATE payments p
-            INNER JOIN staff s ON s.user_id = p.verified_by_staff_id
-            SET p.verified_by_staff_ref = s.id
-            WHERE p.verified_by_staff_id IS NOT NULL
-        ");
+                    if ($booking->assigned_staff_id !== null && isset($staffIdsByUserId[$booking->assigned_staff_id])) {
+                        $updates['assigned_staff_ref'] = $staffIdsByUserId[$booking->assigned_staff_id];
+                    }
 
-        DB::statement("
-            UPDATE rooms r
-            INNER JOIN staff s ON s.user_id = r.last_cleaned_by
-            SET r.last_cleaned_by_ref = s.id
-            WHERE r.last_cleaned_by IS NOT NULL
-        ");
+                    if ($updates !== []) {
+                        DB::table('bookings')
+                            ->where('id', $booking->id)
+                            ->update($updates);
+                    }
+                }
+            }, 'id');
+
+        DB::table('booking_guest_details')
+            ->select(['id', 'created_by_staff_id'])
+            ->orderBy('id')
+            ->chunkById(200, function ($guestDetails) use ($staffIdsByUserId): void {
+                foreach ($guestDetails as $guestDetail) {
+                    if ($guestDetail->created_by_staff_id === null || !isset($staffIdsByUserId[$guestDetail->created_by_staff_id])) {
+                        continue;
+                    }
+
+                    DB::table('booking_guest_details')
+                        ->where('id', $guestDetail->id)
+                        ->update([
+                            'created_by_staff_ref' => $staffIdsByUserId[$guestDetail->created_by_staff_id],
+                        ]);
+                }
+            }, 'id');
+
+        DB::table('payments')
+            ->select(['id', 'verified_by_staff_id'])
+            ->orderBy('id')
+            ->chunkById(200, function ($payments) use ($staffIdsByUserId): void {
+                foreach ($payments as $payment) {
+                    if ($payment->verified_by_staff_id === null || !isset($staffIdsByUserId[$payment->verified_by_staff_id])) {
+                        continue;
+                    }
+
+                    DB::table('payments')
+                        ->where('id', $payment->id)
+                        ->update([
+                            'verified_by_staff_ref' => $staffIdsByUserId[$payment->verified_by_staff_id],
+                        ]);
+                }
+            }, 'id');
+
+        DB::table('rooms')
+            ->select(['id', 'last_cleaned_by'])
+            ->orderBy('id')
+            ->chunkById(200, function ($rooms) use ($staffIdsByUserId): void {
+                foreach ($rooms as $room) {
+                    if ($room->last_cleaned_by === null || !isset($staffIdsByUserId[$room->last_cleaned_by])) {
+                        continue;
+                    }
+
+                    DB::table('rooms')
+                        ->where('id', $room->id)
+                        ->update([
+                            'last_cleaned_by_ref' => $staffIdsByUserId[$room->last_cleaned_by],
+                        ]);
+                }
+            }, 'id');
     }
 
     private function dropUsersForeignKeys(): void
@@ -195,6 +268,8 @@ return new class extends Migration
 
     private function swapDirectReferenceColumns(): void
     {
+        $this->dropIndexIfExists('bookings', 'bookings_assigned_staff_id_status_index');
+
         Schema::table('bookings', function (Blueprint $table): void {
             if (Schema::hasColumn('bookings', 'user_id')) {
                 $table->dropColumn('user_id');
@@ -263,18 +338,21 @@ return new class extends Migration
 
     private function dropProfileUserLinks(): void
     {
+        $this->dropIndexIfExists('admins', 'admins_user_id_unique');
         Schema::table('admins', function (Blueprint $table): void {
             if (Schema::hasColumn('admins', 'user_id')) {
                 $table->dropColumn('user_id');
             }
         });
 
+        $this->dropIndexIfExists('staff', 'staff_user_id_unique');
         Schema::table('staff', function (Blueprint $table): void {
             if (Schema::hasColumn('staff', 'user_id')) {
                 $table->dropColumn('user_id');
             }
         });
 
+        $this->dropIndexIfExists('customers', 'customers_user_id_unique');
         Schema::table('customers', function (Blueprint $table): void {
             if (Schema::hasColumn('customers', 'user_id')) {
                 $table->dropColumn('user_id');
@@ -295,12 +373,14 @@ return new class extends Migration
     private function dropUsersTable(): void
     {
         if (Schema::hasColumn('password_reset_tokens', 'user_id')) {
+            $this->dropIndexIfExists('password_reset_tokens', 'password_reset_tokens_user_id_foreign');
             Schema::table('password_reset_tokens', function (Blueprint $table): void {
                 $table->dropColumn('user_id');
             });
         }
 
         if (Schema::hasColumn('registration_verifications', 'user_id')) {
+            $this->dropIndexIfExists('registration_verifications', 'registration_verifications_user_id_foreign');
             Schema::table('registration_verifications', function (Blueprint $table): void {
                 $table->dropColumn('user_id');
             });
@@ -317,6 +397,17 @@ return new class extends Migration
             });
         } catch (\Throwable) {
             // Ignore missing foreign keys so the migration remains resilient.
+        }
+    }
+
+    private function dropIndexIfExists(string $tableName, string $indexName): void
+    {
+        try {
+            Schema::table($tableName, function (Blueprint $table) use ($indexName): void {
+                $table->dropIndex($indexName);
+            });
+        } catch (\Throwable) {
+            // Ignore missing indexes so this remains safe across drivers/states.
         }
     }
 };

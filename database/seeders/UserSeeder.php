@@ -15,8 +15,6 @@ class UserSeeder extends Seeder
             [
                 'name' => 'Admin User',
                 'password' => Hash::make('password'),
-                'country' => 'Philippines',
-                'email_verified_at' => now(),
             ]
         );
     }

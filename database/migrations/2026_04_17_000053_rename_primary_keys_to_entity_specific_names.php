@@ -2,7 +2,6 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -207,46 +206,38 @@ return new class extends Migration
 
     private function renameAutoIncrementPrimaryKey(string $table, string $from, string $to): void
     {
-        if (!Schema::hasColumn($table, $from) || Schema::hasColumn($table, $to)) {
+        if (!Schema::hasTable($table) || !Schema::hasColumn($table, $from) || Schema::hasColumn($table, $to)) {
             return;
         }
 
-        DB::statement(sprintf(
-            'ALTER TABLE `%s` CHANGE `%s` `%s` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT',
-            $table,
-            $from,
-            $to
-        ));
+        Schema::table($table, function (Blueprint $table) use ($from, $to): void {
+            $table->renameColumn($from, $to);
+        });
     }
 
     private function renameColumn(string $table, string $from, string $to, string $definition): void
     {
-        if (!Schema::hasColumn($table, $from) || Schema::hasColumn($table, $to)) {
+        if (!Schema::hasTable($table) || !Schema::hasColumn($table, $from) || Schema::hasColumn($table, $to)) {
             return;
         }
 
-        DB::statement(sprintf(
-            'ALTER TABLE `%s` CHANGE `%s` `%s` %s',
-            $table,
-            $from,
-            $to,
-            $definition
-        ));
+        Schema::table($table, function (Blueprint $table) use ($from, $to): void {
+            $table->renameColumn($from, $to);
+        });
     }
 
     private function dropForeignIfExists(string $table, string $constraintName): void
     {
-        $databaseName = DB::getDatabaseName();
+        if (!Schema::hasTable($table)) {
+            return;
+        }
 
-        $exists = DB::table('information_schema.TABLE_CONSTRAINTS')
-            ->where('CONSTRAINT_SCHEMA', $databaseName)
-            ->where('TABLE_NAME', $table)
-            ->where('CONSTRAINT_NAME', $constraintName)
-            ->where('CONSTRAINT_TYPE', 'FOREIGN KEY')
-            ->exists();
-
-        if ($exists) {
-            DB::statement(sprintf('ALTER TABLE `%s` DROP FOREIGN KEY `%s`', $table, $constraintName));
+        try {
+            Schema::table($table, function (Blueprint $table) use ($constraintName): void {
+                $table->dropForeign($constraintName);
+            });
+        } catch (\Throwable) {
+            // Ignore if missing on this driver/schema state.
         }
     }
 };

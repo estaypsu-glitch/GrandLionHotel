@@ -81,6 +81,7 @@ return new class extends Migration
 
         if (Schema::hasColumn('users', 'role')) {
             Schema::table('users', function (Blueprint $table) {
+                $table->dropIndex(['role']);
                 $table->dropColumn('role');
             });
         }
@@ -127,7 +128,7 @@ return new class extends Migration
         $roleMap = DB::table('roles')->pluck('id', 'slug');
 
         Schema::table('users', function (Blueprint $table) {
-            $table->string('role', 20)->default('customer')->after('country');
+            $table->string('role', 20)->default('customer')->after('country')->index();
         });
 
         Schema::table('users', function (Blueprint $table) {

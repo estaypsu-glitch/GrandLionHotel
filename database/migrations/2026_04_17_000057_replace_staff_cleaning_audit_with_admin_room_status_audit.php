@@ -2,7 +2,6 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -21,15 +20,21 @@ return new class extends Migration
             }
         });
 
-        if (Schema::hasColumn('rooms', 'last_cleaned_by_staff_id') || Schema::hasColumn('rooms', 'last_cleaned_at')) {
-            Schema::table('rooms', function (Blueprint $table): void {
-                if (Schema::hasColumn('rooms', 'last_cleaned_by_staff_id')) {
+        if (Schema::hasColumn('rooms', 'last_cleaned_by_staff_id')) {
+            try {
+                Schema::table('rooms', function (Blueprint $table): void {
+                    $table->dropConstrainedForeignId('last_cleaned_by_staff_id');
+                });
+            } catch (\Throwable) {
+                Schema::table('rooms', function (Blueprint $table): void {
                     $table->dropColumn('last_cleaned_by_staff_id');
-                }
+                });
+            }
+        }
 
-                if (Schema::hasColumn('rooms', 'last_cleaned_at')) {
-                    $table->dropColumn('last_cleaned_at');
-                }
+        if (Schema::hasColumn('rooms', 'last_cleaned_at')) {
+            Schema::table('rooms', function (Blueprint $table): void {
+                $table->dropColumn('last_cleaned_at');
             });
         }
 
@@ -61,15 +66,21 @@ return new class extends Migration
             }
         });
 
-        if (Schema::hasColumn('rooms', 'status_updated_by_admin_id') || Schema::hasColumn('rooms', 'status_updated_at')) {
-            Schema::table('rooms', function (Blueprint $table): void {
-                if (Schema::hasColumn('rooms', 'status_updated_by_admin_id')) {
+        if (Schema::hasColumn('rooms', 'status_updated_by_admin_id')) {
+            try {
+                Schema::table('rooms', function (Blueprint $table): void {
+                    $table->dropConstrainedForeignId('status_updated_by_admin_id');
+                });
+            } catch (\Throwable) {
+                Schema::table('rooms', function (Blueprint $table): void {
                     $table->dropColumn('status_updated_by_admin_id');
-                }
+                });
+            }
+        }
 
-                if (Schema::hasColumn('rooms', 'status_updated_at')) {
-                    $table->dropColumn('status_updated_at');
-                }
+        if (Schema::hasColumn('rooms', 'status_updated_at')) {
+            Schema::table('rooms', function (Blueprint $table): void {
+                $table->dropColumn('status_updated_at');
             });
         }
 
@@ -93,17 +104,12 @@ return new class extends Migration
             return;
         }
 
-        $databaseName = DB::getDatabaseName();
-
-        $exists = DB::table('information_schema.TABLE_CONSTRAINTS')
-            ->where('CONSTRAINT_SCHEMA', $databaseName)
-            ->where('TABLE_NAME', $table)
-            ->where('CONSTRAINT_NAME', $constraintName)
-            ->where('CONSTRAINT_TYPE', 'FOREIGN KEY')
-            ->exists();
-
-        if ($exists) {
-            DB::statement(sprintf('ALTER TABLE `%s` DROP FOREIGN KEY `%s`', $table, $constraintName));
+        try {
+            Schema::table($table, function (Blueprint $table) use ($constraintName): void {
+                $table->dropForeign($constraintName);
+            });
+        } catch (\Throwable) {
+            // Ignore if already absent.
         }
     }
 };

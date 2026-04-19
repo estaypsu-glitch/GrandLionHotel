@@ -20,10 +20,8 @@ return new class extends Migration
                 'assigned_staff_id' => DB::raw('handled_by_staff_id'),
             ]);
 
-        $this->dropForeignIfExists('bookings', 'bookings_handled_by_staff_id_foreign');
-
         Schema::table('bookings', function (Blueprint $table): void {
-            $table->dropColumn('handled_by_staff_id');
+            $table->dropConstrainedForeignId('handled_by_staff_id');
         });
     }
 
@@ -46,32 +44,30 @@ return new class extends Migration
                 'handled_by_staff_id' => DB::raw('assigned_staff_id'),
             ]);
 
-        if (!$this->foreignKeyExists('bookings', 'bookings_handled_by_staff_id_foreign')) {
+        try {
             Schema::table('bookings', function (Blueprint $table): void {
                 $table->foreign('handled_by_staff_id')
                     ->references('staff_id')
                     ->on('staff')
                     ->nullOnDelete();
             });
+        } catch (\Throwable) {
+            // Ignore if the foreign key already exists.
         }
     }
 
     private function dropForeignIfExists(string $table, string $constraintName): void
     {
-        if (!$this->foreignKeyExists($table, $constraintName)) {
+        if (!Schema::hasTable($table)) {
             return;
         }
 
-        DB::statement(sprintf('ALTER TABLE `%s` DROP FOREIGN KEY `%s`', $table, $constraintName));
-    }
-
-    private function foreignKeyExists(string $table, string $constraintName): bool
-    {
-        return DB::table('information_schema.TABLE_CONSTRAINTS')
-            ->where('CONSTRAINT_SCHEMA', DB::getDatabaseName())
-            ->where('TABLE_NAME', $table)
-            ->where('CONSTRAINT_NAME', $constraintName)
-            ->where('CONSTRAINT_TYPE', 'FOREIGN KEY')
-            ->exists();
+        try {
+            Schema::table($table, function (Blueprint $table) use ($constraintName): void {
+                $table->dropForeign($constraintName);
+            });
+        } catch (\Throwable) {
+            // Ignore if the key is already absent.
+        }
     }
 };

@@ -2,7 +2,6 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -167,13 +166,9 @@ return new class extends Migration
 
         $this->dropForeignIfExists($table, $oldForeignKey);
 
-        DB::statement(sprintf(
-            'ALTER TABLE `%s` CHANGE `%s` `%s` %s',
-            $table,
-            $from,
-            $to,
-            $definition
-        ));
+        Schema::table($table, static function (Blueprint $table) use ($from, $to): void {
+            $table->renameColumn($from, $to);
+        });
 
         Schema::table($table, static function (Blueprint $table) use ($newForeignKeyCallback): void {
             $newForeignKeyCallback($table);
@@ -182,15 +177,16 @@ return new class extends Migration
 
     private function dropForeignIfExists(string $table, string $constraintName): void
     {
-        $exists = DB::table('information_schema.TABLE_CONSTRAINTS')
-            ->where('CONSTRAINT_SCHEMA', DB::getDatabaseName())
-            ->where('TABLE_NAME', $table)
-            ->where('CONSTRAINT_NAME', $constraintName)
-            ->where('CONSTRAINT_TYPE', 'FOREIGN KEY')
-            ->exists();
+        if (!Schema::hasTable($table)) {
+            return;
+        }
 
-        if ($exists) {
-            DB::statement(sprintf('ALTER TABLE `%s` DROP FOREIGN KEY `%s`', $table, $constraintName));
+        try {
+            Schema::table($table, function (Blueprint $table) use ($constraintName): void {
+                $table->dropForeign($constraintName);
+            });
+        } catch (\Throwable) {
+            // Ignore if the key is already absent.
         }
     }
 };

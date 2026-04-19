@@ -10,6 +10,7 @@ return new class extends Migration
     {
         if (Schema::hasColumn('users', 'salary_type')) {
             Schema::table('users', function (Blueprint $table): void {
+                $table->dropIndex(['role', 'salary_type']);
                 $table->dropColumn('salary_type');
             });
         }
