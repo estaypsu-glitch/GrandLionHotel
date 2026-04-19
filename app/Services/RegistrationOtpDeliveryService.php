@@ -10,6 +10,7 @@ class RegistrationOtpDeliveryService
 {
     public function send(RegistrationVerification $verification, string $code): void
     {
-        Mail::to($verification->email)->queue(new RegistrationVerificationCodeMail($verification->name, $code));
+        // OTP is time-sensitive; send immediately so it does not depend on a queue worker.
+        Mail::to($verification->email)->send(new RegistrationVerificationCodeMail($verification->name, $code));
     }
 }

@@ -19,7 +19,8 @@ class PasswordResetService
             'otp_channel' => PasswordResetToken::OTP_CHANNEL_EMAIL,
         ])->save();
 
-        Mail::to($token->email)->queue(new PasswordResetCodeMail(
+        // Password reset OTP should be delivered immediately for better UX and reliability.
+        Mail::to($token->email)->send(new PasswordResetCodeMail(
             recipientName: $this->extractName($token->email),
             code: $code
         ));
