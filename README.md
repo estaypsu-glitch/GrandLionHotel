@@ -7,6 +7,16 @@
 <a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
 </p>
 
+## Render Deployment
+
+This repository now includes a Render Blueprint in `render.yaml` that provisions:
+
+- a Docker-based Laravel web service
+- a private MySQL 8 service with a persistent disk
+- a persistent disk for Laravel uploads under `storage/`
+
+Deployment notes for Render are documented in [`docs/render-mysql.md`](docs/render-mysql.md).
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:

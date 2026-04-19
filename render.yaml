@@ -1,0 +1,89 @@
+services:
+  - type: web
+    name: hotel-reservation-app
+    runtime: docker
+    plan: starter
+    region: singapore
+    autoDeployTrigger: commit
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    disk:
+      name: app-storage
+      mountPath: /var/www/html/storage
+      sizeGB: 5
+    envVars:
+      - key: APP_NAME
+        value: The Grand Lion Hotel
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_URL
+        sync: false
+      - key: APP_KEY
+        sync: false
+      - key: FORCE_HTTPS
+        value: "true"
+      - key: TRUSTED_PROXIES
+        value: "*"
+      - key: APP_TIMEZONE
+        value: Asia/Manila
+      - key: LOG_CHANNEL
+        value: stderr
+      - key: DB_CONNECTION
+        value: mysql
+      - key: DB_HOST
+        fromService:
+          type: pserv
+          name: hotel-reservation-mysql
+          property: host
+      - key: DB_PORT
+        value: "3306"
+      - key: DB_DATABASE
+        fromService:
+          type: pserv
+          name: hotel-reservation-mysql
+          envVarKey: MYSQL_DATABASE
+      - key: DB_USERNAME
+        fromService:
+          type: pserv
+          name: hotel-reservation-mysql
+          envVarKey: MYSQL_USER
+      - key: DB_PASSWORD
+        fromService:
+          type: pserv
+          name: hotel-reservation-mysql
+          envVarKey: MYSQL_PASSWORD
+      - key: SESSION_DRIVER
+        value: database
+      - key: CACHE_STORE
+        value: file
+      - key: QUEUE_CONNECTION
+        value: sync
+      - key: FILESYSTEM_DISK
+        value: public
+      - key: MAIL_MAILER
+        value: log
+      - key: QR_MERCHANT_NAME
+        value: The Grand Lion Hotel
+
+  - type: pserv
+    name: hotel-reservation-mysql
+    runtime: image
+    plan: starter
+    region: singapore
+    image:
+      url: docker.io/mysql/mysql-server:8.0
+    disk:
+      name: mysql
+      mountPath: /var/lib/mysql
+      sizeGB: 10
+    envVars:
+      - key: MYSQL_DATABASE
+        value: hotel_reservation
+      - key: MYSQL_USER
+        value: hotel_user
+      - key: MYSQL_PASSWORD
+        generateValue: true
+      - key: MYSQL_ROOT_PASSWORD
+        generateValue: true
