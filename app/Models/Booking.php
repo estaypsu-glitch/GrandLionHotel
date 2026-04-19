@@ -31,6 +31,8 @@ class Booking extends Model
         'requested_check_out',
         'reschedule_request_notes',
         'reschedule_requested_at',
+        'room_transfer_request_reason',
+        'room_transfer_requested_at',
         'status',
         'notes',
         'actual_check_in_at',
@@ -47,6 +49,7 @@ class Booking extends Model
             'requested_check_in' => 'date',
             'requested_check_out' => 'date',
             'reschedule_requested_at' => 'datetime',
+            'room_transfer_requested_at' => 'datetime',
             'actual_check_in_at' => 'datetime',
             'actual_check_out_at' => 'datetime',
         ];
@@ -165,6 +168,18 @@ class Booking extends Model
             && is_null($this->actual_check_in_at)
             && is_null($this->actual_check_out_at)
             && $this->check_out?->copy()->startOfDay()->greaterThanOrEqualTo(now()->startOfDay());
+    }
+
+    public function hasPendingRoomTransferRequest(): bool
+    {
+        return filled($this->room_transfer_request_reason)
+            && !is_null($this->room_transfer_requested_at);
+    }
+
+    public function canRequestRoomTransfer(): bool
+    {
+        return in_array($this->status, ['pending', 'confirmed'], true)
+            && is_null($this->actual_check_out_at);
     }
 
     public function scopeWherePaymentStatus(Builder $query, string $paymentStatus): Builder

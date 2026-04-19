@@ -84,6 +84,8 @@
         $isConfirmed = in_array($booking->status, ['confirmed', 'completed'], true);
         $canRequestReschedule = $booking->canRequestReschedule();
         $hasPendingRescheduleRequest = $booking->hasPendingRescheduleRequest();
+        $canRequestRoomTransfer = $booking->canRequestRoomTransfer();
+        $hasPendingRoomTransferRequest = $booking->hasPendingRoomTransferRequest();
         $isPaid = $booking->payment_status === 'paid';
         $isCashAwaitingVerification = $booking->status === 'confirmed'
             && $booking->payment_status !== 'paid'
@@ -331,6 +333,50 @@
                         <p class="small text-secondary mt-2 mb-0">This is available only for confirmed unpaid bookings before check-in.</p>
                     @else
                         <p class="small text-secondary mb-0">Schedule change requests are available only for confirmed unpaid bookings before check-in.</p>
+                    @endif
+                @endif
+
+                @if($canRequestRoomTransfer || $hasPendingRoomTransferRequest)
+                    <hr>
+                    <h3 class="h6 mb-3">Request Room Transfer</h3>
+
+                    @if($hasPendingRoomTransferRequest)
+                        <div class="alert alert-info small">
+                            Your room transfer request is pending staff review.
+                            @if($booking->room_transfer_requested_at)
+                                Submitted {{ $booking->room_transfer_requested_at->format('M d, Y h:i A') }}.
+                            @endif
+                        </div>
+                        <p class="small text-secondary mb-3">
+                            Submitted reason:
+                            <strong>{{ $booking->room_transfer_request_reason }}</strong>
+                        </p>
+                    @endif
+
+                    @if($canRequestRoomTransfer)
+                        <form method="POST" action="{{ route('bookings.request-room-transfer', $booking) }}" class="row g-3">
+                            @csrf
+                            @method('PATCH')
+                            <div class="col-12">
+                                <label class="form-label">Reason for room transfer</label>
+                                <textarea
+                                    name="room_transfer_request_reason"
+                                    class="form-control @error('room_transfer_request_reason') is-invalid @enderror"
+                                    rows="3"
+                                    placeholder="Tell us why you need to move to a different room."
+                                    required
+                                >{{ old('room_transfer_request_reason', $booking->room_transfer_request_reason) }}</textarea>
+                                @error('room_transfer_request_reason')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+                            <div class="col-12">
+                                <button type="submit" class="btn btn-ta-outline">Send room transfer request</button>
+                            </div>
+                        </form>
+                        <p class="small text-secondary mt-2 mb-0">Staff will review room availability and your request reason before approving the transfer.</p>
+                    @else
+                        <p class="small text-secondary mb-0">Room transfer requests are available only for active bookings before final check-out.</p>
                     @endif
                 @endif
             </section>

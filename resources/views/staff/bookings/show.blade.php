@@ -171,6 +171,7 @@
         $isOnlineAwaitingVerification = $booking->payment_status === 'pending_verification'
             && in_array(strtolower((string) ($booking->payment?->method ?? '')), ['gcash', 'paymaya'], true);
         $hasPendingRescheduleRequest = $booking->hasPendingRescheduleRequest();
+        $hasPendingRoomTransferRequest = $booking->hasPendingRoomTransferRequest();
         $canStaffDirectlyReschedule = $booking->canBeRescheduledByStaff();
         $canStaffTransferRoom = $booking->canBeTransferredByStaff();
         $defaultCheckInTime = old('actual_check_in_at', now()->format('Y-m-d\TH:i'));
@@ -359,6 +360,44 @@
                     @method('PATCH')
                     <button type="submit" class="btn btn-staff-outline">
                         <i class="bi bi-calendar-x"></i>
+                        <span>Decline request</span>
+                    </button>
+                </form>
+            </div>
+        </section>
+    @endif
+
+    @if($hasPendingRoomTransferRequest)
+        <section class="booking-shell p-3 p-lg-4 mb-4">
+            <div class="d-flex flex-wrap justify-content-between gap-2 align-items-start mb-3">
+                <div>
+                    <h2 class="h5 mb-1">Pending Room Transfer Request</h2>
+                    <p class="booking-note mb-0">Customer requested a room change. Review the reason, then use the room transfer section below if you approve.</p>
+                </div>
+            </div>
+            <div class="booking-info-grid mb-3">
+                <div class="booking-info-item">
+                    <p class="booking-info-label">Current Room</p>
+                    <p class="booking-info-value">Room {{ $booking->room->name ?? $booking->room_id }}</p>
+                </div>
+                <div class="booking-info-item">
+                    <p class="booking-info-label">Requested At</p>
+                    <p class="booking-info-value">{{ optional($booking->room_transfer_requested_at)->format('M d, Y h:i A') ?? '-' }}</p>
+                </div>
+                <div class="booking-info-item">
+                    <p class="booking-info-label">Customer Reason</p>
+                    <p class="booking-info-value">{{ $booking->room_transfer_request_reason ?: '-' }}</p>
+                </div>
+            </div>
+            <div class="booking-actions">
+                <form method="POST" action="{{ route('staff.bookings.decline-room-transfer-request', $booking) }}" data-confirm="Decline and clear this room transfer request?">
+                    @csrf
+                    @method('PATCH')
+                    @if(!empty($returnTo))
+                        <input type="hidden" name="return_to" value="{{ $returnTo }}">
+                    @endif
+                    <button type="submit" class="btn btn-staff-outline">
+                        <i class="bi bi-x-circle"></i>
                         <span>Decline request</span>
                     </button>
                 </form>

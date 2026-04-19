@@ -325,6 +325,33 @@ class BookingController extends Controller
             ->with('status', 'Schedule change request sent. Staff will review your requested dates.');
     }
 
+    public function requestRoomTransfer(Request $request, Booking $booking)
+    {
+        $this->authorizeOwner($booking);
+
+        if (!$booking->canRequestRoomTransfer()) {
+            return redirect()
+                ->route('bookings.show', $booking)
+                ->withErrors(['booking' => 'Room transfer requests are only available for active bookings before final check-out.']);
+        }
+
+        $validated = $request->validate([
+            'room_transfer_request_reason' => ['required', 'string', 'max:1000'],
+        ], [
+            'room_transfer_request_reason.required' => 'Please provide your reason for requesting a room transfer.',
+            'room_transfer_request_reason.max' => 'Room transfer reason must not exceed 1000 characters.',
+        ]);
+
+        $booking->update([
+            'room_transfer_request_reason' => trim((string) $validated['room_transfer_request_reason']),
+            'room_transfer_requested_at' => now(),
+        ]);
+
+        return redirect()
+            ->route('bookings.show', $booking)
+            ->with('status', 'Room transfer request sent. Staff will review your reason and available rooms.');
+    }
+
     public function receipt(Booking $booking)
     {
         $this->authorizeOwner($booking);

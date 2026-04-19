@@ -66,6 +66,7 @@ Route::middleware('auth:customer')->group(function () {
     Route::get('/bookings/{booking}/receipt', [BookingController::class, 'receipt'])->name('bookings.receipt');
     Route::patch('/bookings/{booking}/cancel', [BookingController::class, 'cancel'])->name('bookings.cancel');
     Route::patch('/bookings/{booking}/request-reschedule', [BookingController::class, 'requestReschedule'])->name('bookings.request-reschedule');
+    Route::patch('/bookings/{booking}/request-room-transfer', [BookingController::class, 'requestRoomTransfer'])->name('bookings.request-room-transfer');
     Route::get('/bookings/{booking}/success', [BookingController::class, 'success'])->name('bookings.success');
 
     Route::get('/payments/{booking}/checkout', [PaymentController::class, 'checkout'])->name('payments.checkout');
@@ -122,6 +123,7 @@ Route::prefix('staff')->name('staff.')->middleware(['auth:staff', 'staff'])->gro
     Route::patch('/bookings/{booking}/reschedule', [StaffBookingController::class, 'reschedule'])->name('bookings.reschedule');
     Route::patch('/bookings/{booking}/apply-reschedule-request', [StaffBookingController::class, 'applyRescheduleRequest'])->name('bookings.apply-reschedule-request');
     Route::patch('/bookings/{booking}/decline-reschedule-request', [StaffBookingController::class, 'declineRescheduleRequest'])->name('bookings.decline-reschedule-request');
+    Route::patch('/bookings/{booking}/decline-room-transfer-request', [StaffBookingController::class, 'declineRoomTransferRequest'])->name('bookings.decline-room-transfer-request');
     Route::patch('/bookings/{booking}/staff-notes', [StaffBookingController::class, 'updateStaffNotes'])->name('bookings.staff-notes');
     Route::patch('/bookings/{booking}/status', [StaffBookingController::class, 'updateStatus'])->name('bookings.update-status');
 });

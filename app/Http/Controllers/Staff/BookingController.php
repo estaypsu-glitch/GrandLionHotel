@@ -464,6 +464,8 @@ class BookingController extends Controller
 
                 $lockedBooking->update($this->withAssignedStaff($lockedBooking, [
                     'room_id' => $targetRoom->id,
+                    'room_transfer_request_reason' => null,
+                    'room_transfer_requested_at' => null,
                 ]));
 
                 if ($lockedBooking->payment && $lockedBooking->payment_status === 'unpaid') {
@@ -743,6 +745,20 @@ class BookingController extends Controller
         ]));
 
         return $this->redirectAfterBookingAction($request, $booking, 'Schedule change request declined.');
+    }
+
+    public function declineRoomTransferRequest(Request $request, Booking $booking)
+    {
+        if (!$booking->hasPendingRoomTransferRequest()) {
+            return back()->withErrors(['booking' => 'There is no pending room transfer request for this booking.']);
+        }
+
+        $booking->update($this->withAssignedStaff($booking, [
+            'room_transfer_request_reason' => null,
+            'room_transfer_requested_at' => null,
+        ]));
+
+        return $this->redirectAfterBookingAction($request, $booking, 'Room transfer request declined.');
     }
 
     public function receipt(Booking $booking)
