@@ -14,7 +14,7 @@ class RoomSeeder extends Seeder
 
         $sampleRooms = [
             [
-                'name' => 'Room 101 - Garden Standard',
+                'name' => 'Room 101',
                 'type' => 'Standard',
                 'view_type' => 'Nature View',
                 'description' => 'Comfortable standard room with garden-side windows and work desk.',
@@ -24,7 +24,7 @@ class RoomSeeder extends Seeder
                 'room_status_slug' => 'clean',
             ],
             [
-                'name' => 'Room 102 - City Standard',
+                'name' => 'Room 102',
                 'type' => 'Standard',
                 'view_type' => 'Garden View',
                 'description' => 'Bright standard room with lush garden-facing windows and fast Wi-Fi.',
