@@ -19,8 +19,8 @@ class PageController extends Controller
     public function gallery()
     {
         $rooms = Room::query()
-            ->orderByAvailability('desc')
-            ->orderBy('price_per_night')
+            ->availableForBooking()
+            ->latest()
             ->take(12)
             ->get();
 
