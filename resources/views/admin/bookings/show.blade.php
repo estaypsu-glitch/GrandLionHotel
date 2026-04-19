@@ -59,7 +59,7 @@
             ? \Illuminate\Support\Facades\Storage::disk('public')->url($paymentProofPath)
             : '';
         $isOnlineAwaitingVerification = $booking->payment_status === 'pending_verification'
-            && in_array(strtolower((string) ($booking->payment?->method ?? '')), ['gcash', 'paymaya'], true);
+            && \App\Models\Payment::isOnlineMethod((string) ($booking->payment?->method ?? ''));
     @endphp
 
     <div class="d-flex justify-content-between align-items-center mb-3">
@@ -194,7 +194,7 @@
                 </div>
             @endif
             <div class="row g-2">
-                <div class="col-md-6"><strong>Method:</strong> {{ ucfirst(str_replace('_', ' ', $booking->payment->method)) }}</div>
+                <div class="col-md-6"><strong>Method:</strong> {{ \App\Models\Payment::methodLabel($booking->payment->method) }}</div>
                 <div class="col-md-6"><strong>Status:</strong> {{ ucfirst(str_replace('_', ' ', $booking->payment->status)) }}</div>
                 @if(filled($booking->payment->customer_reference))
                     <div class="col-md-6"><strong>Customer Ref No.:</strong> {{ $booking->payment->customer_reference }}</div>

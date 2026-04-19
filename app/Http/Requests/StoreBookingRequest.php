@@ -2,8 +2,9 @@
 
 namespace App\Http\Requests;
 
-use Carbon\Carbon;
+use App\Models\Payment;
 use App\Models\Room;
+use Carbon\Carbon;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -55,7 +56,7 @@ class StoreBookingRequest extends FormRequest
             'postal_code' => ['nullable', 'string', 'max:40'],
             'contact_phone' => ['nullable', 'string', 'max:30', 'regex:/^[0-9+()\\-\\s]{7,30}$/'],
             'contact_email' => ['nullable', 'email', 'max:255'],
-            'payment_preference' => ['nullable', 'in:cash,bank_transfer,gcash,paymaya'],
+            'payment_preference' => ['nullable', Rule::in(Payment::allowedMethods())],
             'discount_type' => ['nullable', 'in:none,pwd,senior'],
             'discount_id' => ['nullable', 'string', 'max:80', 'required_if:discount_type,pwd,senior'],
             'discount_id_photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120', 'required_if:discount_type,pwd,senior'],

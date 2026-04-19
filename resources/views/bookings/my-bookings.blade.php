@@ -94,7 +94,7 @@
                                 && strtolower((string) ($booking->payment?->method ?? '')) === 'cash';
                             $isOnlineAwaitingVerification = $booking->status === 'confirmed'
                                 && $booking->payment_status === 'pending_verification'
-                                && in_array(strtolower((string) ($booking->payment?->method ?? '')), ['gcash', 'paymaya'], true);
+                                && \App\Models\Payment::isOnlineMethod((string) ($booking->payment?->method ?? ''));
                             $hasPendingRescheduleRequest = $booking->hasPendingRescheduleRequest();
                         @endphp
                         <tr>

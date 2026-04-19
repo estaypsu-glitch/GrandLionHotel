@@ -48,7 +48,7 @@ class PaymentService
 
             $source = trim((string) ($meta['source'] ?? ''));
             if ($source === '') {
-                $source = in_array($method, ['gcash', 'paymaya'], true) ? 'online_qr' : 'manual';
+                $source = \App\Models\Payment::isOnlineMethod($method) ? 'online' : 'manual';
             }
 
             $transactionReference = trim((string) ($payment?->transaction_reference ?? ''));

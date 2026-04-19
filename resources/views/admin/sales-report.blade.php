@@ -50,13 +50,7 @@
 @section('content')
     @php
         $methodLabel = static function (string $value): string {
-            return match ($value) {
-                'bank_transfer' => 'Bank Transfer',
-                'gcash' => 'GCash',
-                'paymaya' => 'PayMaya',
-                'cash' => 'Cash',
-                default => ucfirst(str_replace('_', ' ', $value)),
-            };
+            return \App\Models\Payment::methodLabel($value);
         };
     @endphp
 
@@ -87,9 +81,8 @@
                         <select name="method" class="form-select">
                             <option value="all" @selected($method === 'all')>All methods</option>
                             <option value="cash" @selected($method === 'cash')>Cash</option>
-                            <option value="bank_transfer" @selected($method === 'bank_transfer')>Bank Transfer</option>
-                            <option value="gcash" @selected($method === 'gcash')>GCash</option>
-                            <option value="paymaya" @selected($method === 'paymaya')>PayMaya</option>
+                            <option value="instapay" @selected($method === 'instapay')>InstaPay</option>
+                            <option value="credit_debit_card" @selected($method === 'credit_debit_card')>Credit/Debit Card</option>
                         </select>
                     </div>
                     <div class="col-lg-3 d-flex gap-2">

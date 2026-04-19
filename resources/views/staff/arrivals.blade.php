@@ -51,7 +51,7 @@
             background: #f8fbff;
         }
         .arrivals-actions-col {
-            min-width: 330px;
+            min-width: 430px;
         }
         .arrivals-actions {
             display: inline-flex;
@@ -176,12 +176,12 @@
             return \Illuminate\Support\Facades\Storage::disk('public')->url($path);
         };
         $gcashWallet = [
-            'label' => (string) data_get(config('services.qr_wallets'), 'gcash.label', 'GCash'),
-            'holder_name' => (string) data_get(config('services.qr_wallets'), 'gcash.holder_name', $merchantName),
-            'number' => (string) data_get(config('services.qr_wallets'), 'gcash.number', '0917-123-4567'),
-            'qr_image_url' => $resolveQrImageUrl(data_get(config('services.qr_wallets'), 'gcash.qr_image_url', '')),
-            'qr_payload' => (string) data_get(config('services.qr_wallets'), 'gcash.qr_payload', ''),
-            'app_link' => (string) data_get(config('services.qr_wallets'), 'gcash.app_link', 'https://m.gcash.com/gcash-app'),
+            'label' => (string) data_get(config('services.qr_wallets'), 'instapay.label', 'InstaPay'),
+            'holder_name' => (string) data_get(config('services.qr_wallets'), 'instapay.holder_name', $merchantName),
+            'number' => (string) data_get(config('services.qr_wallets'), 'instapay.number', 'N/A'),
+            'qr_image_url' => $resolveQrImageUrl(data_get(config('services.qr_wallets'), 'instapay.qr_image_url', '')),
+            'qr_payload' => (string) data_get(config('services.qr_wallets'), 'instapay.qr_payload', ''),
+            'app_link' => (string) data_get(config('services.qr_wallets'), 'instapay.app_link', 'https://www.bsp.gov.ph/PaymentAndSettlement/Instapay'),
         ];
     @endphp
 
@@ -286,6 +286,15 @@
                                                     <span>Cash</span>
                                                 </button>
                                             </form>
+                                            <form method="POST" action="{{ route('staff.bookings.record-payment', $booking) }}" data-confirm="Record card payment for this booking?">
+                                                @csrf
+                                                @method('PATCH')
+                                                <input type="hidden" name="method" value="credit_debit_card">
+                                                <button type="submit" class="btn btn-sm btn-staff-outline">
+                                                    <i class="bi bi-credit-card-2-front"></i>
+                                                    <span>Card</span>
+                                                </button>
+                                            </form>
                                             <button
                                                 type="button"
                                                 class="btn btn-sm btn-staff js-open-gcash-qr"
@@ -299,7 +308,7 @@
                                                 data-default-discount-proof-url="{{ $resolveDiscountProofUrl(data_get($booking->reservation_meta, 'discount_id_photo_path', '')) }}"
                                             >
                                                 <i class="bi bi-qr-code"></i>
-                                                <span>GCash QR</span>
+                                                <span>InstaPay QR</span>
                                             </button>
                                         @elseif($booking->status === 'confirmed' && $booking->payment_status === 'pending_verification')
                                             <span class="small text-secondary d-inline-block">Awaiting payment verification</span>
@@ -341,7 +350,7 @@
                 </div>
                 <div class="modal-body px-3 pb-3 pt-0">
                     <div class="gcash-pay-card">
-                        <h5 class="fw-bold mb-2" id="gcashQrModalLabel">Securely complete the payment with your GCash app</h5>
+                        <h5 class="fw-bold mb-2" id="gcashQrModalLabel">Securely complete the payment with InstaPay</h5>
                         <a
                             href="{{ $gcashWallet['app_link'] }}"
                             target="_blank"
@@ -349,12 +358,12 @@
                             class="gcash-open-btn"
                             id="gcash_open_app_link"
                         >
-                            Click here to open GCash App
+                            Open InstaPay details
                         </a>
-                        <p class="fw-semibold mt-3 mb-2">or log in to GCash and scan this QR with the QR Scanner.</p>
+                        <p class="fw-semibold mt-3 mb-2">Scan this QR using your banking app with InstaPay support.</p>
 
                         <div class="gcash-qr-frame">
-                            <img src="" alt="GCash QR code" id="gcash_qr_image">
+                            <img src="" alt="InstaPay QR code" id="gcash_qr_image">
                         </div>
 
                         <div class="alert alert-warning small d-none mt-3 mb-0" id="gcash_qr_notice" role="alert"></div>
@@ -382,10 +391,10 @@
                         </div>
                     </div>
 
-                    <form method="POST" action="" id="gcash_record_payment_form" class="mt-3" data-confirm="Mark this booking as paid via GCash?">
+                    <form method="POST" action="" id="gcash_record_payment_form" class="mt-3" data-confirm="Mark this booking as paid via InstaPay?">
                         @csrf
                         @method('PATCH')
-                        <input type="hidden" name="method" value="gcash">
+                        <input type="hidden" name="method" value="instapay">
                         <input type="hidden" name="qr_reference" value="" id="gcash_qr_reference_input">
                         <div class="row g-2 align-items-end">
                             <div class="col-md-5">
@@ -586,7 +595,7 @@
                 return [
                     `merchant:${merchantName}`,
                     `booking:${bookingId}`,
-                    `wallet:${walletConfig.label || 'GCash'}`,
+                    `wallet:${walletConfig.label || 'InstaPay'}`,
                     `holder:${walletConfig.holder_name || merchantName}`,
                     `wallet_number:${walletConfig.number || ''}`,
                     `amount:${amount}`,
@@ -596,7 +605,7 @@
 
             const buildReference = (bookingId) => {
                 const suffix = Date.now().toString().slice(-6);
-                return `GLH-${bookingId}-GCASH-${suffix}`;
+                return `GLH-${bookingId}-INSTAPAY-${suffix}`;
             };
 
             const resolveQrSource = (amount, qrReference, bookingId) => {
@@ -607,14 +616,14 @@
                     if (amountAwarePayload !== null) {
                         return {
                             url: `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(amountAwarePayload)}`,
-                            note: `GCash QR generated with auto-filled amount PHP ${amount}.`,
+                            note: `InstaPay QR generated with auto-filled amount PHP ${amount}.`,
                             supported: true,
                         };
                     }
 
                     return {
                         url: `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(officialPayload)}`,
-                        note: 'GCash payload is invalid for amount injection. Use a valid single-line QRPh payload.',
+                        note: 'InstaPay payload is invalid for amount injection. Use a valid single-line QRPh payload.',
                         supported: false,
                     };
                 }
@@ -623,7 +632,7 @@
                 if (officialImage !== '') {
                     return {
                         url: officialImage,
-                        note: 'Showing static GCash QR image. Add GCASH_QR_PAYLOAD for auto-filled bill amount.',
+                        note: 'Showing static InstaPay QR image. Add INSTAPAY_QR_PAYLOAD for auto-filled bill amount.',
                         supported: false,
                     };
                 }
@@ -632,7 +641,7 @@
 
                 return {
                     url: `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(fallbackPayload)}`,
-                    note: 'Demo QR generated. Add GCASH_QR_PAYLOAD in .env for real wallet-compatible dynamic amount.',
+                    note: 'Demo QR generated. Add INSTAPAY_QR_PAYLOAD in .env for real wallet-compatible dynamic amount.',
                     supported: false,
                 };
             };
@@ -672,7 +681,7 @@
                 const qrSource = resolveQrSource(payableAmountText, activeBooking.reference, activeBooking.bookingId);
 
                 if (openAppLink) {
-                    openAppLink.href = String(walletConfig.app_link || 'https://m.gcash.com/gcash-app');
+                    openAppLink.href = String(walletConfig.app_link || 'https://www.bsp.gov.ph/PaymentAndSettlement/Instapay');
                 }
 
                 if (bookingText) {
@@ -726,7 +735,7 @@
                 }
 
                 qrImage.src = qrSource.url;
-                qrImage.alt = `GCash QR for booking ${activeBooking.bookingId}`;
+                qrImage.alt = `InstaPay QR for booking ${activeBooking.bookingId}`;
                 setNotice(qrSource.note, qrSource.supported);
             };
 

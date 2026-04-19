@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Mail\BookingPaidMail;
 use App\Models\Booking;
+use App\Models\Payment;
 use App\Services\PaymentService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Throwable;
 
 class PaymentController extends Controller
@@ -74,18 +76,18 @@ class PaymentController extends Controller
         }
 
         $validated = $request->validate([
-            'method' => ['required', 'in:cash,bank_transfer,gcash,paymaya'],
-            'qr_reference' => ['nullable', 'string', 'max:80', 'required_if:method,gcash,paymaya'],
-            'customer_reference' => ['nullable', 'string', 'max:120', 'required_if:method,gcash,paymaya'],
-            'payment_proof' => ['nullable', 'image', 'max:5120', 'required_if:method,gcash,paymaya'],
+            'method' => ['required', Rule::in(Payment::allowedMethods())],
+            'qr_reference' => ['nullable', 'string', 'max:80'],
+            'customer_reference' => ['nullable', 'string', 'max:120', Rule::requiredIf(fn (): bool => Payment::isOnlineMethod((string) $request->input('method')))],
+            'payment_proof' => ['nullable', 'image', 'max:5120', Rule::requiredIf(fn (): bool => Payment::isOnlineMethod((string) $request->input('method')))],
         ]);
 
-        if ($validated['method'] === 'cash') {
+        if ($validated['method'] === Payment::METHOD_CASH) {
             $booking->payment()->updateOrCreate(
                 ['booking_id' => $booking->id],
                 [
                     'amount' => $booking->total_price,
-                    'method' => 'cash',
+                    'method' => Payment::METHOD_CASH,
                     'status' => 'unpaid',
                     'source' => 'cash_pending',
                     'qr_reference' => null,
@@ -98,7 +100,7 @@ class PaymentController extends Controller
                 ->with('status', 'Cash payment selected. Please pay at the front desk. Staff will confirm and mark this booking as paid once payment is received.');
         }
 
-        if (in_array($validated['method'], ['gcash', 'paymaya'], true)) {
+        if (Payment::isOnlineMethod($validated['method'])) {
             $existingPayment = $booking->payment()->first();
             $oldProofPath = trim((string) ($existingPayment?->payment_proof_path ?? ''));
             $proofPath = $request->file('payment_proof')->store('payment-proofs', 'public');
@@ -113,7 +115,7 @@ class PaymentController extends Controller
                     'amount' => $booking->total_price,
                     'method' => $validated['method'],
                     'status' => 'pending_verification',
-                    'source' => 'qr_submitted',
+                    'source' => 'online_submitted',
                     'qr_reference' => $validated['qr_reference'] ?? null,
                     'customer_reference' => $validated['customer_reference'] ?? null,
                     'payment_proof_path' => $proofPath,
@@ -129,7 +131,7 @@ class PaymentController extends Controller
 
             return redirect()
                 ->route('bookings.show', $booking)
-                ->with('status', 'Payment proof submitted. Staff will review your online transfer before marking it as paid.');
+                ->with('status', 'Payment proof submitted. Staff will review your online payment before marking it as paid.');
         }
 
         $this->paymentService->charge($booking, $validated['method'], [

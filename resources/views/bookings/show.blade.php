@@ -92,7 +92,7 @@
             && strtolower((string) ($booking->payment?->method ?? '')) === 'cash';
         $isOnlineAwaitingVerification = $booking->status === 'confirmed'
             && $booking->payment_status === 'pending_verification'
-            && in_array(strtolower((string) ($booking->payment?->method ?? '')), ['gcash', 'paymaya'], true);
+            && \App\Models\Payment::isOnlineMethod((string) ($booking->payment?->method ?? ''));
         $isCompleted = $booking->status === 'completed';
         $billedUnits = $booking->nights();
 
@@ -194,7 +194,7 @@
                     @if(!empty($reservationMeta['payment_preference']))
                         <div class="col-md-6">
                             <small class="text-secondary d-block">Payment preference</small>
-                            <strong>{{ ucfirst(str_replace('_', ' ', $reservationMeta['payment_preference'])) }}</strong>
+                            <strong>{{ \App\Models\Payment::methodLabel((string) $reservationMeta['payment_preference']) }}</strong>
                         </div>
                     @endif
                     @if(!empty($reservationMeta['discount_type']) && $reservationMeta['discount_type'] !== 'none')
@@ -388,7 +388,7 @@
                 <p class="mb-1"><small class="text-secondary">Booking status</small><br><strong>{{ ucfirst($booking->status) }}</strong></p>
                 <p class="mb-1"><small class="text-secondary">Payment status</small><br><strong>{{ ucfirst(str_replace('_', ' ', $booking->payment_status)) }}</strong></p>
                 @if($isOnlineAwaitingVerification)
-                    <p class="small text-secondary mb-1">Method selected: {{ ucfirst(str_replace('_', ' ', (string) ($booking->payment?->method ?? 'online'))) }} (awaiting staff verification)</p>
+                    <p class="small text-secondary mb-1">Method selected: {{ \App\Models\Payment::methodLabel((string) ($booking->payment?->method ?? 'online')) }} (awaiting staff verification)</p>
                 @endif
                 @if($isCashAwaitingVerification)
                     <p class="small text-secondary mb-1">Method selected: Cash (waiting for staff confirmation)</p>

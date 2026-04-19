@@ -79,7 +79,7 @@ class DashboardController extends Controller
         }
 
         $method = trim(strtolower($request->string('method')->toString()));
-        if (!in_array($method, ['all', 'cash', 'bank_transfer', 'gcash', 'paymaya'], true)) {
+        if (!in_array($method, array_merge(['all'], Payment::allowedMethods()), true)) {
             $method = 'all';
         }
 
@@ -117,8 +117,8 @@ class DashboardController extends Controller
             'paid_bookings' => $paidBookings,
             'average_sale' => $paidBookings > 0 ? round($totalRevenue / $paidBookings, 2) : 0.0,
             'total_discount' => (float) $payments->sum(static fn ($payment): float => (float) ($payment->discount_amount ?? 0)),
-            'online_payments' => $payments->filter(static fn ($payment): bool => in_array((string) $payment->method, ['gcash', 'paymaya'], true))->count(),
-            'cash_payments' => $payments->where('method', 'cash')->count(),
+            'online_payments' => $payments->filter(static fn ($payment): bool => Payment::isOnlineMethod((string) $payment->method))->count(),
+            'cash_payments' => $payments->where('method', Payment::METHOD_CASH)->count(),
         ];
 
         $dailySales = $payments

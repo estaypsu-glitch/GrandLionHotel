@@ -169,7 +169,7 @@
         $paymentStatusLabel = ucfirst(str_replace('_', ' ', $booking->payment_status));
         $billedUnits = $booking->nights();
         $isOnlineAwaitingVerification = $booking->payment_status === 'pending_verification'
-            && in_array(strtolower((string) ($booking->payment?->method ?? '')), ['gcash', 'paymaya'], true);
+            && \App\Models\Payment::isOnlineMethod((string) ($booking->payment?->method ?? ''));
         $hasPendingRescheduleRequest = $booking->hasPendingRescheduleRequest();
         $hasPendingRoomTransferRequest = $booking->hasPendingRoomTransferRequest();
         $canStaffDirectlyReschedule = $booking->canBeRescheduledByStaff();
@@ -679,9 +679,8 @@
                             <label class="form-label">Payment Method</label>
                             <select class="form-select" name="method" required>
                                 <option value="cash" @selected(old('method', 'cash') === 'cash')>Cash</option>
-                                <option value="bank_transfer" @selected(old('method') === 'bank_transfer')>Bank Transfer</option>
-                                <option value="gcash" @selected(old('method') === 'gcash')>GCash</option>
-                                <option value="paymaya" @selected(old('method') === 'paymaya')>PayMaya</option>
+                                <option value="instapay" @selected(old('method') === 'instapay')>InstaPay</option>
+                                <option value="credit_debit_card" @selected(old('method') === 'credit_debit_card')>Credit/Debit Card</option>
                             </select>
                         </div>
                         <div class="col-12">
@@ -713,7 +712,7 @@
                 @if($booking->payment)
                     <div class="booking-meta-line">
                         <span class="booking-meta-label">Method</span>
-                        <span class="booking-meta-value">{{ ucfirst(str_replace('_', ' ', $booking->payment->method)) }}</span>
+                        <span class="booking-meta-value">{{ \App\Models\Payment::methodLabel($booking->payment->method) }}</span>
                     </div>
                     <div class="booking-meta-line">
                         <span class="booking-meta-label">Status</span>

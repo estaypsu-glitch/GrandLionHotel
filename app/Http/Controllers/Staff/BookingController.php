@@ -7,6 +7,7 @@ use App\Mail\BookingPaidMail;
 use App\Mail\BookingCancelledMail;
 use App\Mail\BookingConfirmedMail;
 use App\Models\Booking;
+use App\Models\Payment;
 use App\Models\Room;
 use App\Services\AvailabilityService;
 use App\Services\PaymentService;
@@ -20,6 +21,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\Rule;
 use InvalidArgumentException;
 use Illuminate\Validation\ValidationException;
 use Throwable;
@@ -509,7 +511,7 @@ class BookingController extends Controller
         }
 
         $validated = $request->validate([
-            'method' => ['required', 'in:cash,bank_transfer,gcash,paymaya'],
+            'method' => ['required', Rule::in(Payment::allowedMethods())],
             'qr_reference' => ['nullable', 'string', 'max:80'],
             'discount_type' => ['nullable', 'in:none,pwd,senior'],
             'discount_id' => ['nullable', 'string', 'max:80'],
@@ -568,13 +570,13 @@ class BookingController extends Controller
             return back()->withErrors(['payment' => 'Only submitted online payments can be approved.']);
         }
 
-        if (!in_array($payment->method, ['gcash', 'paymaya'], true)) {
-            return back()->withErrors(['payment' => 'Only GCash or PayMaya submissions can be approved here.']);
+        if (!Payment::isOnlineMethod((string) $payment->method)) {
+            return back()->withErrors(['payment' => 'Only InstaPay or Credit/Debit Card submissions can be approved here.']);
         }
 
         $payment->update([
             'status' => 'paid',
-            'source' => 'qr_verified',
+            'source' => 'online_verified',
             'paid_at' => now(),
             'verified_at' => now(),
             'staff_id' => auth()->id(),
@@ -602,13 +604,13 @@ class BookingController extends Controller
             return back()->withErrors(['payment' => 'Only submitted online payments can be rejected.']);
         }
 
-        if (!in_array($payment->method, ['gcash', 'paymaya'], true)) {
-            return back()->withErrors(['payment' => 'Only GCash or PayMaya submissions can be rejected here.']);
+        if (!Payment::isOnlineMethod((string) $payment->method)) {
+            return back()->withErrors(['payment' => 'Only InstaPay or Credit/Debit Card submissions can be rejected here.']);
         }
 
         $payment->update([
             'status' => 'unpaid',
-            'source' => 'qr_rejected',
+            'source' => 'online_rejected',
             'paid_at' => null,
             'verified_at' => now(),
             'staff_id' => auth()->id(),
@@ -972,7 +974,7 @@ class BookingController extends Controller
             'check_out' => ['required', 'date', 'after_or_equal:check_in'],
             'guests' => ['required', 'integer', 'min:1'],
             'notes' => ['nullable', 'string'],
-            'payment_preference' => ['nullable', 'in:cash,bank_transfer,gcash,paymaya'],
+            'payment_preference' => ['nullable', Rule::in(Payment::allowedMethods())],
         ], [
             'customer_phone.regex' => 'Phone must contain only digits, spaces, +, (), or -.',
         ]);

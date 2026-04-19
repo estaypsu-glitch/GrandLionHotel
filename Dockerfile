@@ -1,6 +1,7 @@
 FROM richarvey/nginx-php-fpm:latest
 
 COPY . /var/www/html
+COPY docker/start-render.sh /usr/local/bin/start-render.sh
 
 WORKDIR /var/www/html
 
@@ -11,5 +12,6 @@ ENV LOG_CHANNEL=stderr
 ENV COMPOSER_ALLOW_SUPERUSER=1
 
 RUN composer install --no-dev --optimize-autoloader
+RUN chmod +x /usr/local/bin/start-render.sh
 
-CMD ["/start.sh"]
+CMD ["/usr/local/bin/start-render.sh"]

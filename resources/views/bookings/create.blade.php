@@ -286,9 +286,8 @@
                         <select class="form-select" name="payment_preference">
                             <option value="">Select one (optional)</option>
                             <option value="cash" @selected(old('payment_preference') === 'cash')>Cash</option>
-                            <option value="bank_transfer" @selected(old('payment_preference') === 'bank_transfer')>Bank Transfer</option>
-                            <option value="gcash" @selected(old('payment_preference') === 'gcash')>GCash</option>
-                            <option value="paymaya" @selected(old('payment_preference') === 'paymaya')>PayMaya</option>
+                            <option value="instapay" @selected(old('payment_preference') === 'instapay')>InstaPay</option>
+                            <option value="credit_debit_card" @selected(old('payment_preference') === 'credit_debit_card')>Credit/Debit Card</option>
                         </select>
                     </div>
 

@@ -16,11 +16,11 @@
 
         <h3 class="h5">3. Payment Policy</h3>
         <p class="text-secondary">Rates are displayed in Philippine Peso (PHP). Available payment methods are shown during checkout.</p>
-        <p class="text-secondary mb-2">For online wallet payments (GCash/PayMaya), the following rules apply:</p>
+        <p class="text-secondary mb-2">For online payments (InstaPay/Credit-Debit Card), the following rules apply:</p>
         <ul class="text-secondary mb-3">
             <li>Payment is subject to manual verification by authorized hotel staff.</li>
             <li>Payment is not treated as received until the booking payment status is marked as Paid.</li>
-            <li>Guests must submit both a valid wallet reference number and a clear payment proof image.</li>
+            <li>Guests must submit a valid transaction reference number and a clear payment proof image.</li>
             <li>Submitted proof may be rejected if details are incomplete, inconsistent, unreadable, or invalid.</li>
             <li>If rejected, the guest must resubmit correct proof before payment can be approved.</li>
             <li>Payment verification may take additional time depending on operational volume and review availability.</li>

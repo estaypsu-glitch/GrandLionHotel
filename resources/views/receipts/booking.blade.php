@@ -141,7 +141,7 @@
         </tr>
         <tr>
             <th>Payment Method</th>
-            <td>{{ ucfirst(str_replace('_', ' ', $booking->payment?->method ?? 'N/A')) }}</td>
+            <td>{{ \App\Models\Payment::methodLabel($booking->payment?->method) }}</td>
         </tr>
         <tr>
             <th>Payment Status</th>

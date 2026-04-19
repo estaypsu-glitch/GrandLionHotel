@@ -14,6 +14,15 @@ class Payment extends Model
     use HasFactory;
     use HasLegacyIdAttribute;
 
+    public const METHOD_CASH = 'cash';
+    public const METHOD_INSTAPAY = 'instapay';
+    public const METHOD_CREDIT_DEBIT_CARD = 'credit_debit_card';
+
+    public const ONLINE_METHODS = [
+        self::METHOD_INSTAPAY,
+        self::METHOD_CREDIT_DEBIT_CARD,
+    ];
+
     protected $primaryKey = 'payment_id';
 
     protected $fillable = [
@@ -54,6 +63,32 @@ class Payment extends Model
     public function verifiedByStaff(): BelongsTo
     {
         return $this->belongsTo(Staff::class, 'staff_id', 'staff_id');
+    }
+
+    public static function allowedMethods(): array
+    {
+        return [
+            self::METHOD_CASH,
+            self::METHOD_INSTAPAY,
+            self::METHOD_CREDIT_DEBIT_CARD,
+        ];
+    }
+
+    public static function isOnlineMethod(?string $method): bool
+    {
+        return in_array(strtolower(trim((string) $method)), self::ONLINE_METHODS, true);
+    }
+
+    public static function methodLabel(?string $method): string
+    {
+        $normalized = strtolower(trim((string) $method));
+
+        return match ($normalized) {
+            self::METHOD_CASH => 'Cash',
+            self::METHOD_INSTAPAY, 'bank_transfer', 'gcash', 'paymaya' => 'InstaPay',
+            self::METHOD_CREDIT_DEBIT_CARD => 'Credit/Debit Card',
+            default => ucfirst(str_replace('_', ' ', $normalized !== '' ? $normalized : 'n/a')),
+        };
     }
 
     public function ensureTransactionReference(?int $bookingId = null): string
