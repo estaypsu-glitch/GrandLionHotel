@@ -25,6 +25,12 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $trustedProxies = env('TRUSTED_PROXIES', env('APP_ENV') === 'production' ? '*' : null);
+
+        if (is_string($trustedProxies) && trim($trustedProxies) !== '') {
+            $middleware->trustProxies(at: $trustedProxies);
+        }
+
         $middleware->web(append: [
             ResolveActiveGuard::class,
         ]);
