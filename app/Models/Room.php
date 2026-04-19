@@ -14,7 +14,7 @@ class Room extends Model
     use HasFactory;
     use HasLegacyIdAttribute;
 
-    public const BOOKABLE_ROOM_STATUS_SLUGS = ['clean', 'inspected'];
+    public const BOOKABLE_ROOM_STATUS_SLUGS = ['clean'];
 
     private const FALLBACK_IMAGES = [
         'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1400&q=80',

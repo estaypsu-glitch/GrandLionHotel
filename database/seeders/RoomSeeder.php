@@ -31,7 +31,7 @@ class RoomSeeder extends Seeder
                 'price_per_night' => 2699.00,
                 'capacity' => 2,
                 'image' => null,
-                'room_status_slug' => 'inspected',
+                'room_status_slug' => 'clean',
             ],
             [
                 'name' => 'Room 201 - Deluxe Twin',
@@ -81,7 +81,7 @@ class RoomSeeder extends Seeder
                 'price_per_night' => 5699.00,
                 'capacity' => 4,
                 'image' => null,
-                'room_status_slug' => 'inspected',
+                'room_status_slug' => 'clean',
             ],
             [
                 'name' => 'Room 402 - Executive Suite',
