@@ -237,7 +237,9 @@ class AuthController extends Controller
 
         $this->loginAccount($request, $user);
 
-        return $this->redirectAfterAuthentication($request);
+        return $this->redirectAfterAuthentication($request)
+            ->with('status', 'Account created successfully. Welcome to The Grand Lion Hotel!')
+            ->with('account_created_name', $user->name);
     }
 
     public function resendRegisterCode(Request $request)

@@ -2,11 +2,11 @@
 
 namespace App\Models;
 
-use App\Models\Staff;
 use App\Models\Concerns\HasLegacyIdAttribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
 class Payment extends Model
@@ -40,7 +40,6 @@ class Payment extends Model
         'transaction_reference',
         'paid_at',
         'verified_at',
-        'staff_id',
     ];
 
     protected function casts(): array
@@ -60,9 +59,9 @@ class Payment extends Model
         return $this->belongsTo(Booking::class, 'booking_id', 'booking_id');
     }
 
-    public function verifiedByStaff(): BelongsTo
+    public function refundRequests(): HasMany
     {
-        return $this->belongsTo(Staff::class, 'staff_id', 'staff_id');
+        return $this->hasMany(RefundRequest::class, 'payment_id', 'payment_id');
     }
 
     public static function allowedMethods(): array

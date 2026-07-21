@@ -70,15 +70,20 @@
     @php
         $roomType = $booking->room->type ?? 'N/A';
         $roomView = $booking->room->view_type ?? 'Not specified';
+        $pricingQuote = $booking->pricingQuote();
         $paidAmount = (float) ($booking->payment?->amount ?? $booking->total_price);
-        $originalAmount = (float) ($booking->payment?->original_amount ?? $booking->total_price);
+        $originalAmount = (float) ($booking->payment?->original_amount ?? ($pricingQuote['total'] ?? $booking->total_price));
         $discountType = (string) data_get($booking->reservation_meta, 'discount_type', '');
         $discountAmount = (float) ($booking->payment?->discount_amount ?? 0);
         $billedUnits = max(1, $booking->nights());
         $unitLabel = 'night';
-        $bookedSubtotal = (float) $booking->total_price;
-        $unitRate = $billedUnits > 0 ? round($bookedSubtotal / $billedUnits, 2) : $bookedSubtotal;
+        $roomSubtotal = (float) ($pricingQuote['room_total'] ?? $booking->total_price);
+        $roomNightlyRate = (float) ($pricingQuote['base_nightly_rate'] ?? 0);
+        $extraBeddingCount = (int) ($pricingQuote['extra_bedding_count'] ?? 0);
+        $extraBeddingFeePerNight = (float) ($pricingQuote['extra_bedding_fee_per_night'] ?? 0);
+        $extraBeddingTotal = (float) ($pricingQuote['extra_bedding_total'] ?? 0);
         $hasDiscount = $discountType !== '' && $discountAmount > 0;
+        $bookedSubtotal = $hasDiscount ? $originalAmount : (float) ($pricingQuote['total'] ?? $booking->total_price);
         $transactionReference = strtoupper(trim((string) ($booking->payment?->transaction_reference ?? '')));
         $qrReference = strtoupper(trim((string) ($booking->payment?->qr_reference ?? '')));
     @endphp
@@ -162,12 +167,22 @@
             <td>{{ optional($booking->payment?->paid_at)->format('M d, Y h:i A') ?? 'N/A' }}</td>
         </tr>
         <tr>
-            <th>Nightly Rate (Booked)</th>
-            <td>&#8369;{{ number_format($unitRate, 2) }}</td>
+            <th>Room Nightly Rate</th>
+            <td>&#8369;{{ number_format($roomNightlyRate, 2) }}</td>
         </tr>
         <tr>
+            <th>Room Subtotal</th>
+            <td>&#8369;{{ number_format($roomSubtotal, 2) }}</td>
+        </tr>
+        @if($extraBeddingCount > 0)
+            <tr>
+                <th>Extra Bedding</th>
+                <td>{{ $extraBeddingCount }} x &#8369;{{ number_format($extraBeddingFeePerNight, 2) }} x {{ $billedUnits }} {{ $unitLabel }}{{ $billedUnits === 1 ? '' : 's' }} = &#8369;{{ number_format($extraBeddingTotal, 2) }}</td>
+            </tr>
+        @endif
+        <tr>
             <th>Subtotal Calculation</th>
-            <td>&#8369;{{ number_format($unitRate, 2) }} x {{ $billedUnits }} {{ $unitLabel }}{{ $billedUnits === 1 ? '' : 's' }} = &#8369;{{ number_format($bookedSubtotal, 2) }}</td>
+            <td>&#8369;{{ number_format($roomSubtotal, 2) }} + &#8369;{{ number_format($extraBeddingTotal, 2) }} = &#8369;{{ number_format($bookedSubtotal, 2) }}</td>
         </tr>
         @if($hasDiscount)
             <tr>

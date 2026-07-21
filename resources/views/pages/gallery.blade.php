@@ -85,7 +85,7 @@
                                 @if(filled($room->view_type))
                                     &middot; {{ $room->view_type }}
                                 @endif
-                                &middot; {{ $room->capacity }} guests
+                                &middot; Standard occupancy: 2 guests
                             </p>
                             <p class="gallery-room-price">&#8369;{{ number_format((float) $room->price_per_night, 2) }} per night</p>
                         </div>

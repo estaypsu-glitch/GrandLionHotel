@@ -12,6 +12,7 @@ use App\Models\Room;
 use App\Services\AvailabilityService;
 use App\Services\PaymentService;
 use App\Services\PricingService;
+use App\Services\RefundRequestService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -31,7 +32,8 @@ class BookingController extends Controller
     public function __construct(
         private readonly PaymentService $paymentService,
         private readonly AvailabilityService $availabilityService,
-        private readonly PricingService $pricingService
+        private readonly PricingService $pricingService,
+        private readonly RefundRequestService $refundRequestService
     ) {
     }
 
@@ -137,7 +139,14 @@ class BookingController extends Controller
 
     public function show(Request $request, Booking $booking)
     {
-        $booking->load(['user', 'room.roomStatus', 'payment.verifiedByStaff', 'guestDetail', 'assignedStaff']);
+        $booking->load([
+            'user',
+            'room.roomStatus',
+            'payment',
+            'guestDetail',
+            'assignedStaff',
+            'latestRefundRequest',
+        ]);
         $this->ensurePaidTransactionReference($booking);
         $returnTo = $this->resolveSafeReturnTo($request->query('return_to'));
         $backUrl = $returnTo ?? route('staff.bookings.index');
@@ -167,7 +176,7 @@ class BookingController extends Controller
         $newStatus = $validated['status'];
 
         if ($previousStatus === $newStatus) {
-            return redirect()->route('staff.bookings.show', $booking)->with('status', 'Booking status is already up to date.');
+            return $this->redirectAfterBookingAction($request, $booking, 'Booking status is already up to date.');
         }
 
         if (!$booking->canTransitionTo($newStatus)) {
@@ -203,7 +212,7 @@ class BookingController extends Controller
 
         $booking->update($updatePayload);
         if ($newStatus === 'cancelled' && $booking->payment_status === 'paid') {
-            $booking->payment()->updateOrCreate(
+            $payment = $booking->payment()->updateOrCreate(
                 ['booking_id' => $booking->id],
                 [
                     'amount' => (float) ($booking->payment?->amount ?? $booking->total_price),
@@ -211,6 +220,11 @@ class BookingController extends Controller
                     'status' => 'refund_pending',
                 ]
             );
+
+            $this->refundRequestService->createPendingForCancellation($booking, $payment, [
+                'reason' => 'Staff cancelled the booking and marked the payment for refund processing.',
+                'notes' => 'Refund request was created automatically from the staff booking status flow.',
+            ]);
         }
 
         $booking->loadMissing(['user', 'room', 'payment', 'guestDetail', 'assignedStaff']);
@@ -261,7 +275,7 @@ class BookingController extends Controller
         ]));
 
         if ($newPaymentStatus === 'refund_pending') {
-            $booking->payment()->updateOrCreate(
+            $payment = $booking->payment()->updateOrCreate(
                 ['booking_id' => $booking->id],
                 [
                     'amount' => (float) ($booking->payment?->amount ?? $booking->total_price),
@@ -269,6 +283,11 @@ class BookingController extends Controller
                     'status' => 'refund_pending',
                 ]
             );
+
+            $this->refundRequestService->createPendingForCancellation($booking, $payment, [
+                'reason' => 'Staff cancelled the booking and marked the payment for refund processing.',
+                'notes' => 'Refund request was created automatically from the staff cancellation flow.',
+            ]);
         }
 
         $booking->loadMissing(['user', 'room', 'payment', 'guestDetail', 'assignedStaff']);
@@ -399,7 +418,75 @@ class BookingController extends Controller
             'staff_notes' => $validated['staff_notes'] ?? null,
         ]));
 
-        return redirect()->route('staff.bookings.show', $booking)->with('status', 'Internal staff notes saved.');
+        return $this->redirectAfterBookingAction($request, $booking, 'Internal staff notes saved.');
+    }
+
+    public function updateOccupancy(Request $request, Booking $booking)
+    {
+        if (in_array($booking->status, ['cancelled', 'completed'], true)) {
+            return back()->withErrors(['occupancy' => 'Guest count can only be updated for pending or confirmed bookings.']);
+        }
+
+        $booking->loadMissing(['room', 'payment', 'guestDetail']);
+
+        $validated = $request->validate([
+            'adults' => ['required', 'integer', 'min:1', 'max:20'],
+            'kids' => ['nullable', 'integer', 'min:0', 'max:20'],
+            'extra_bedding_confirmed' => ['nullable', 'accepted'],
+        ]);
+
+        $adults = (int) $validated['adults'];
+        $kids = (int) ($validated['kids'] ?? 0);
+        $guestTotal = $adults + $kids;
+        $requiredExtraBedding = max(0, $guestTotal - Room::standardGuestCapacity());
+
+        if ($requiredExtraBedding > 0 && !$request->boolean('extra_bedding_confirmed')) {
+            return back()
+                ->withInput()
+                ->withErrors([
+                    'extra_bedding_confirmed' => 'Confirm extra bedding approval for guests beyond the 2-guest standard occupancy.',
+                ]);
+        }
+
+        $recalculatedTotal = $this->pricingService->calculateTotal(
+            $booking->room,
+            $booking->check_in->toDateString(),
+            $booking->check_out->toDateString(),
+            $guestTotal
+        );
+        $currentBillableBaseTotal = $this->resolveBookingBillableBaseTotal($booking);
+        $amountChanged = !$this->amountsMatch($recalculatedTotal, $currentBillableBaseTotal);
+
+        if (in_array($booking->payment_status, ['paid', 'pending_verification'], true) && $amountChanged) {
+            return back()
+                ->withInput()
+                ->withErrors([
+                    'occupancy' => 'This booking already has a settled or submitted payment. Occupancy changes that affect the total amount are blocked.',
+                ]);
+        }
+
+        $booking->guestDetail()->updateOrCreate(
+            ['booking_id' => $booking->id],
+            [
+                'adults' => $adults,
+                'kids' => $kids,
+            ]
+        );
+
+        $booking->update($this->withAssignedStaff($booking));
+        if (!in_array($booking->payment_status, ['paid', 'pending_verification'], true)) {
+            $this->syncBookingAmount($booking, $recalculatedTotal);
+        }
+
+        $message = $requiredExtraBedding > 0
+            ? 'Guest count updated. Extra bedding is now recorded for the added guest(s).'
+            : 'Guest count updated successfully.';
+
+        if ($amountChanged && !in_array($booking->payment_status, ['paid', 'pending_verification'], true)) {
+            $message .= ' Amount updated to PHP '.number_format($recalculatedTotal, 2).'.';
+        }
+
+        return $this->redirectAfterBookingAction($request, $booking, $message);
     }
 
     public function transferRoom(Request $request, Booking $booking)
@@ -440,12 +527,6 @@ class BookingController extends Controller
                     ]);
                 }
 
-                if ((int) $lockedBooking->guests > (int) $targetRoom->capacity) {
-                    throw ValidationException::withMessages([
-                        'room_id' => 'Selected room cannot fit the guest count for this booking.',
-                    ]);
-                }
-
                 $checkIn = $lockedBooking->check_in->toDateString();
                 $checkOut = $lockedBooking->check_out->toDateString();
 
@@ -456,7 +537,12 @@ class BookingController extends Controller
                 }
 
                 $currentStayTotal = $this->resolveBookingStayTotal($lockedBooking);
-                $newStayTotal = $this->pricingService->calculateTotal($targetRoom, $checkIn, $checkOut);
+                $newStayTotal = $this->pricingService->calculateTotal(
+                    $targetRoom,
+                    $checkIn,
+                    $checkOut,
+                    $lockedBooking->guests
+                );
 
                 if ($this->transferNeedsMatchingTotal($lockedBooking) && !$this->amountsMatch($currentStayTotal, $newStayTotal)) {
                     throw ValidationException::withMessages([
@@ -579,12 +665,11 @@ class BookingController extends Controller
             'source' => 'online_verified',
             'paid_at' => now(),
             'verified_at' => now(),
-            'staff_id' => auth()->id(),
         ]);
         $payment->ensureTransactionReference((int) $booking->id);
 
         $booking->update($this->withAssignedStaff($booking));
-        $booking->refresh()->load(['user', 'room', 'payment.verifiedByStaff', 'guestDetail', 'assignedStaff']);
+        $booking->refresh()->load(['user', 'room', 'payment', 'guestDetail', 'assignedStaff']);
 
         $this->sendBookingMail($booking, new BookingPaidMail($booking));
 
@@ -613,7 +698,6 @@ class BookingController extends Controller
             'source' => 'online_rejected',
             'paid_at' => null,
             'verified_at' => now(),
-            'staff_id' => auth()->id(),
             'transaction_reference' => null,
         ]);
 
@@ -656,7 +740,8 @@ class BookingController extends Controller
         $newTotal = $this->pricingService->calculateTotal(
             $booking->room,
             $validated['check_in'],
-            $validated['check_out']
+            $validated['check_out'],
+            $booking->guests
         );
 
         $booking->update($this->withAssignedStaff($booking, [
@@ -709,7 +794,8 @@ class BookingController extends Controller
         $newTotal = $this->pricingService->calculateTotal(
             $booking->room,
             $requestedCheckIn,
-            $requestedCheckOut
+            $requestedCheckOut,
+            $booking->guests
         );
 
         $booking->update($this->withAssignedStaff($booking, [
@@ -788,15 +874,92 @@ class BookingController extends Controller
         ]);
     }
 
+    private function resolveBookingBillableBaseTotal(Booking $booking): float
+    {
+        $payment = $booking->getRelationValue('payment');
+
+        if (!$payment) {
+            $payment = $booking->payment()->first();
+            if ($payment) {
+                $booking->setRelation('payment', $payment);
+            }
+        }
+
+        $billableTotal = $payment?->original_amount ?? $payment?->amount;
+        if (is_numeric($billableTotal) && (float) $billableTotal > 0) {
+            return round((float) $billableTotal, 2);
+        }
+
+        return round($this->resolveBookingStayTotal($booking), 2);
+    }
+
+    private function syncBookingAmount(Booking $booking, float $amount): void
+    {
+        $normalizedAmount = round(max(0, $amount), 2);
+        $payment = $booking->getRelationValue('payment');
+
+        if (!$payment) {
+            $payment = $booking->payment()->first();
+            if ($payment) {
+                $booking->setRelation('payment', $payment);
+            }
+        }
+
+        if ($payment) {
+            $payment->update([
+                'amount' => $normalizedAmount,
+                'original_amount' => null,
+                'discount_rate' => null,
+                'discount_amount' => null,
+            ]);
+
+            $booking->setRelation('payment', $payment->fresh());
+
+            return;
+        }
+
+        $payment = $booking->payment()->create([
+            'amount' => $normalizedAmount,
+            'method' => 'pending',
+            'status' => 'unpaid',
+        ]);
+
+        $booking->setRelation('payment', $payment);
+    }
+
     private function redirectAfterBookingAction(Request $request, Booking $booking, string $message)
     {
         $returnTo = $this->resolveSafeReturnTo($request->input('return_to'));
+        $redirectSection = $this->resolveSafeRedirectSection($request->input('redirect_section'));
+
+        if ($request->boolean('stay_on_booking')) {
+            return redirect()
+                ->to($this->bookingShowUrl($booking, $returnTo, $redirectSection))
+                ->with('status', $message);
+        }
 
         if ($returnTo !== null) {
             return redirect()->to($returnTo)->with('status', $message);
         }
 
         return redirect()->route('staff.bookings.show', $booking)->with('status', $message);
+    }
+
+    private function bookingShowUrl(Booking $booking, ?string $returnTo = null, ?string $section = null): string
+    {
+        $parameters = ['booking' => $booking];
+
+        if ($returnTo !== null) {
+            $parameters['return_to'] = $returnTo;
+        }
+
+        $url = route('staff.bookings.show', $parameters);
+
+        if ($section !== null) {
+            $url .= '#'.$section;
+        }
+
+        return $url;
     }
 
     private function resolveSafeReturnTo(?string $value): ?string
@@ -813,6 +976,21 @@ class BookingController extends Controller
 
         $path = (string) ($parts['path'] ?? '');
         if (!str_starts_with($path, '/staff/')) {
+            return null;
+        }
+
+        return $candidate;
+    }
+
+    private function resolveSafeRedirectSection(?string $value): ?string
+    {
+        $candidate = trim((string) $value);
+
+        if ($candidate === '') {
+            return null;
+        }
+
+        if (!preg_match('/^[A-Za-z0-9_-]+$/', $candidate)) {
             return null;
         }
 
@@ -851,11 +1029,10 @@ class BookingController extends Controller
             ->with('roomStatus')
             ->availableForBooking()
             ->whereKeyNot($booking->room_id)
-            ->where('capacity', '>=', $booking->guests)
             ->orderBy('name')
             ->get()
             ->map(function (Room $room) use ($booking, $checkIn, $checkOut): Room {
-                $stayTotal = $this->pricingService->calculateTotal($room, $checkIn, $checkOut);
+                $stayTotal = $this->pricingService->calculateTotal($room, $checkIn, $checkOut, $booking->guests);
                 $room->setAttribute('transfer_stay_total', $stayTotal);
                 $room->setAttribute(
                     'transfer_is_available',
@@ -888,7 +1065,8 @@ class BookingController extends Controller
         return $this->pricingService->calculateTotal(
             $booking->room,
             $booking->check_in->toDateString(),
-            $booking->check_out->toDateString()
+            $booking->check_out->toDateString(),
+            $booking->guests
         );
     }
 
@@ -975,11 +1153,13 @@ class BookingController extends Controller
             'guests' => ['required', 'integer', 'min:1'],
             'notes' => ['nullable', 'string'],
             'payment_preference' => ['nullable', Rule::in(Payment::allowedMethods())],
+            'extra_bedding_confirmed' => ['nullable', 'accepted'],
         ], [
             'customer_phone.regex' => 'Phone must contain only digits, spaces, +, (), or -.',
         ]);
 
         $room = Room::findOrFail($validated['room_id']);
+        $requiredExtraBedding = max(0, ((int) $validated['guests']) - Room::standardGuestCapacity());
 
         $checkInDate = Carbon::parse($validated['check_in'])->startOfDay();
         $checkOutDate = Carbon::parse($validated['check_out'])->startOfDay();
@@ -990,8 +1170,12 @@ class BookingController extends Controller
             ])->withInput();
         }
 
-        if ($validated['guests'] > $room->capacity) {
-            return back()->withErrors(['guests' => 'Guest count exceeds room capacity (max ' . $room->capacity . ').'])->withInput();
+        if ($requiredExtraBedding > 0 && !$request->boolean('extra_bedding_confirmed')) {
+            return back()
+                ->withErrors([
+                    'extra_bedding_confirmed' => 'Confirm extra bedding approval before saving a booking with more than 2 guests.',
+                ])
+                ->withInput();
         }
 
         if (!$this->availabilityService->isRoomAvailable($room, $validated['check_in'], $validated['check_out'])) {
@@ -1013,12 +1197,6 @@ class BookingController extends Controller
                     ]);
                 }
 
-                if ((int) $validated['guests'] > (int) $lockedRoom->capacity) {
-                    throw ValidationException::withMessages([
-                        'guests' => 'Guest count exceeds room capacity (max '.$lockedRoom->capacity.').',
-                    ]);
-                }
-
                 if (!$this->availabilityService->isRoomAvailable($lockedRoom, $validated['check_in'], $validated['check_out'])) {
                     throw ValidationException::withMessages([
                         'room_id' => 'Room not available for selected dates.',
@@ -1028,7 +1206,8 @@ class BookingController extends Controller
                 $totalPrice = $this->pricingService->calculateTotal(
                     $lockedRoom,
                     $validated['check_in'],
-                    $validated['check_out']
+                    $validated['check_out'],
+                    (int) $validated['guests']
                 );
 
                 $booking = Booking::create([
@@ -1054,7 +1233,6 @@ class BookingController extends Controller
                     'adults' => (int) $validated['guests'],
                     'kids' => 0,
                     'payment_preference' => $validated['payment_preference'] ?? null,
-                    'staff_id' => auth()->id(),
                 ], static fn (mixed $value): bool => !is_null($value) && $value !== ''));
 
                 $booking->payment()->create([

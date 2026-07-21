@@ -4,7 +4,6 @@ namespace App\Models;
 
 use App\Models\Concerns\HasLegacyIdAttribute;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class RoomDateDiscount extends Model
 {
@@ -14,15 +13,16 @@ class RoomDateDiscount extends Model
 
     protected $fillable = [
         'room_id',
-        'discount_date',
+        'discount_date_start',
+        'discount_date_end',
         'discount_percent',
-        'admin_id',
     ];
 
     protected function casts(): array
     {
         return [
-            'discount_date' => 'date',
+            'discount_date_start' => 'date',
+            'discount_date_end' => 'date',
             'discount_percent' => 'decimal:2',
         ];
     }
@@ -32,9 +32,4 @@ class RoomDateDiscount extends Model
         return $this->belongsTo(Room::class, 'room_id', 'room_id');
     }
 
-    public function admin(): BelongsTo
-    {
-        return $this->belongsTo(Admin::class, 'admin_id', 'admin_id');
-    }
 }
-

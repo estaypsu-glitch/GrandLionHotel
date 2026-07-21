@@ -153,6 +153,13 @@
         $paymentProofUrl = $paymentProofPath !== ''
             ? \Illuminate\Support\Facades\Storage::disk('public')->url($paymentProofPath)
             : '';
+        $latestRefundRequest = $booking->latestRefundRequest;
+        $refundRequestStatusLabel = $latestRefundRequest
+            ? ucfirst(str_replace('_', ' ', (string) $latestRefundRequest->status))
+            : null;
+        $refundMethodLabel = $booking->payment
+            ? \App\Models\Payment::methodLabel((string) $booking->payment->method)
+            : null;
         $profileAddress = trim(collect([
             $booking->user?->address_line,
             $booking->user?->city,
@@ -176,6 +183,11 @@
         $canStaffTransferRoom = $booking->canBeTransferredByStaff();
         $defaultCheckInTime = old('actual_check_in_at', now()->format('Y-m-d\TH:i'));
         $defaultCheckOutTime = old('actual_check_out_at', now()->format('Y-m-d\TH:i'));
+        $standardGuests = \App\Models\Room::standardGuestCapacity();
+        $currentAdults = max(1, (int) old('adults', $booking->guestDetail?->adults ?? max(1, $booking->guests)));
+        $currentKids = max(0, (int) old('kids', $booking->guestDetail?->kids ?? 0));
+        $currentOccupancyTotal = $currentAdults + $currentKids;
+        $currentExtraBedding = max(0, $currentOccupancyTotal - $standardGuests);
     @endphp
 
     <section class="mb-4">
@@ -193,7 +205,7 @@
         </div>
     </section>
 
-    <div class="booking-actions mb-3">
+    <div class="booking-actions mb-3" id="booking-top-actions">
         @if($booking->canBeConfirmedByStaff())
             <form method="POST" action="{{ route('staff.bookings.confirm', $booking) }}" data-confirm="Confirm this booking now?">
                 @csrf
@@ -201,6 +213,8 @@
                 @if(!empty($returnTo))
                     <input type="hidden" name="return_to" value="{{ $returnTo }}">
                 @endif
+                <input type="hidden" name="stay_on_booking" value="1">
+                <input type="hidden" name="redirect_section" value="booking-top-actions">
                 <button type="submit" class="btn btn-staff">
                     <i class="bi bi-check2-circle"></i>
                     <span>Confirm booking</span>
@@ -215,6 +229,8 @@
                 @if(!empty($returnTo))
                     <input type="hidden" name="return_to" value="{{ $returnTo }}">
                 @endif
+                <input type="hidden" name="stay_on_booking" value="1">
+                <input type="hidden" name="redirect_section" value="booking-top-actions">
                 <button type="submit" class="btn btn-staff-danger">
                     <i class="bi bi-x-circle"></i>
                     <span>Cancel booking</span>
@@ -230,7 +246,7 @@
         @endif
     </div>
 
-    <section class="booking-shell p-3 p-lg-4 mb-4">
+    <section class="booking-shell p-3 p-lg-4 mb-4" id="arrival-departure-log">
         <div class="d-flex flex-wrap justify-content-between gap-2 align-items-start mb-3">
             <div>
                 <h2 class="h5 mb-1">Arrival & Departure Log</h2>
@@ -249,6 +265,8 @@
                         @if(!empty($returnTo))
                             <input type="hidden" name="return_to" value="{{ $returnTo }}">
                         @endif
+                        <input type="hidden" name="stay_on_booking" value="1">
+                        <input type="hidden" name="redirect_section" value="arrival-departure-log">
                         <div class="col-12">
                             <label class="form-label">Arrival date and time</label>
                             <input
@@ -288,6 +306,8 @@
                         @if(!empty($returnTo))
                             <input type="hidden" name="return_to" value="{{ $returnTo }}">
                         @endif
+                        <input type="hidden" name="stay_on_booking" value="1">
+                        <input type="hidden" name="redirect_section" value="arrival-departure-log">
                         <div class="col-12">
                             <label class="form-label">Departure date and time</label>
                             <input
@@ -320,6 +340,8 @@
         </div>
     </section>
 
+    <div id="schedule-management"></div>
+
     @if($hasPendingRescheduleRequest)
         <section class="booking-shell p-3 p-lg-4 mb-4">
             <div class="d-flex flex-wrap justify-content-between gap-2 align-items-start mb-3">
@@ -350,6 +372,11 @@
                 <form method="POST" action="{{ route('staff.bookings.apply-reschedule-request', $booking) }}" data-confirm="Apply this requested schedule to the booking now?">
                     @csrf
                     @method('PATCH')
+                    @if(!empty($returnTo))
+                        <input type="hidden" name="return_to" value="{{ $returnTo }}">
+                    @endif
+                    <input type="hidden" name="stay_on_booking" value="1">
+                    <input type="hidden" name="redirect_section" value="schedule-management">
                     <button type="submit" class="btn btn-staff">
                         <i class="bi bi-calendar-check"></i>
                         <span>Apply requested schedule</span>
@@ -358,6 +385,11 @@
                 <form method="POST" action="{{ route('staff.bookings.decline-reschedule-request', $booking) }}" data-confirm="Decline and clear this schedule change request?">
                     @csrf
                     @method('PATCH')
+                    @if(!empty($returnTo))
+                        <input type="hidden" name="return_to" value="{{ $returnTo }}">
+                    @endif
+                    <input type="hidden" name="stay_on_booking" value="1">
+                    <input type="hidden" name="redirect_section" value="schedule-management">
                     <button type="submit" class="btn btn-staff-outline">
                         <i class="bi bi-calendar-x"></i>
                         <span>Decline request</span>
@@ -366,6 +398,8 @@
             </div>
         </section>
     @endif
+
+    <div id="room-transfer-management"></div>
 
     @if($hasPendingRoomTransferRequest)
         <section class="booking-shell p-3 p-lg-4 mb-4">
@@ -396,6 +430,8 @@
                     @if(!empty($returnTo))
                         <input type="hidden" name="return_to" value="{{ $returnTo }}">
                     @endif
+                    <input type="hidden" name="stay_on_booking" value="1">
+                    <input type="hidden" name="redirect_section" value="room-transfer-management">
                     <button type="submit" class="btn btn-staff-outline">
                         <i class="bi bi-x-circle"></i>
                         <span>Decline request</span>
@@ -406,7 +442,7 @@
     @endif
 
     @if($canStaffDirectlyReschedule)
-        <section class="booking-shell p-3 p-lg-4 mb-4">
+        <section class="booking-shell p-3 p-lg-4 mb-4" id="direct-staff-reschedule">
             <div class="d-flex flex-wrap justify-content-between gap-2 align-items-start mb-3">
                 <div>
                     <h2 class="h5 mb-1">Direct Staff Reschedule</h2>
@@ -416,6 +452,11 @@
             <form method="POST" action="{{ route('staff.bookings.reschedule', $booking) }}" class="row g-3" data-confirm="Update this booking schedule now?">
                 @csrf
                 @method('PATCH')
+                @if(!empty($returnTo))
+                    <input type="hidden" name="return_to" value="{{ $returnTo }}">
+                @endif
+                <input type="hidden" name="stay_on_booking" value="1">
+                <input type="hidden" name="redirect_section" value="direct-staff-reschedule">
                 <div class="col-md-6">
                     <label class="form-label">New check-in</label>
                     <input
@@ -455,7 +496,7 @@
     @endif
 
     @if($canStaffTransferRoom)
-        <section class="booking-shell p-3 p-lg-4 mb-4">
+        <section class="booking-shell p-3 p-lg-4 mb-4" id="room-transfer">
             <div class="d-flex flex-wrap justify-content-between gap-2 align-items-start mb-3">
                 <div>
                     <h2 class="h5 mb-1">Room Transfer</h2>
@@ -476,8 +517,12 @@
                     <p class="booking-info-value">{{ $booking->room->name ?? '-' }}</p>
                 </div>
                 <div class="booking-info-item">
-                    <p class="booking-info-label">Guest Count</p>
+                    <p class="booking-info-label">Guests in Booking</p>
                     <p class="booking-info-value">{{ $booking->guests }}</p>
+                </div>
+                <div class="booking-info-item">
+                    <p class="booking-info-label">Extra Bedding Needed</p>
+                    <p class="booking-info-value">{{ $booking->extra_bedding_count }}</p>
                 </div>
                 <div class="booking-info-item">
                     <p class="booking-info-label">Stay Dates</p>
@@ -493,13 +538,18 @@
                 <form method="POST" action="{{ route('staff.bookings.transfer-room', $booking) }}" class="row g-3 align-items-end" data-confirm="Move this booking to the selected room now?">
                     @csrf
                     @method('PATCH')
+                    @if(!empty($returnTo))
+                        <input type="hidden" name="return_to" value="{{ $returnTo }}">
+                    @endif
+                    <input type="hidden" name="stay_on_booking" value="1">
+                    <input type="hidden" name="redirect_section" value="room-transfer-management">
                     <div class="col-lg-8">
                         <label class="form-label">New room</label>
                         <select name="room_id" class="form-select @error('room_id') is-invalid @enderror" required>
                             <option value="">Select available room...</option>
                             @foreach($transferRooms as $room)
                                 <option value="{{ $room->id }}" @selected(old('room_id') == $room->id)>
-                                    {{ $room->name }} ({{ $room->type ?? 'Room' }}{{ filled($room->view_type) ? ', '.$room->view_type : '' }} - {{ $room->capacity }} guests) - PHP {{ number_format((float) $room->transfer_stay_total, 2) }}
+                                    {{ $room->name }} ({{ $room->type ?? 'Room' }}{{ filled($room->view_type) ? ', '.$room->view_type : '' }} - standard {{ $standardGuests }} guests) - PHP {{ number_format((float) $room->transfer_stay_total, 2) }}
                                 </option>
                             @endforeach
                         </select>
@@ -516,7 +566,7 @@
                 </form>
             @else
                 <p class="booking-note mb-0">
-                    No matching rooms are currently available for this booking's dates and guest count.
+                    No matching rooms are currently available for this booking's stay dates.
                 </p>
             @endif
         </section>
@@ -524,7 +574,7 @@
 
     <div class="row g-4">
         <div class="col-xl-8">
-            <section class="booking-shell p-3 p-lg-4 mb-4">
+            <section class="booking-shell p-3 p-lg-4 mb-4" id="guest-stay-information">
                 <h2 class="h5 mb-3">Guest & Stay Information</h2>
                 <div class="booking-info-grid">
                     <div class="booking-info-item">
@@ -552,8 +602,16 @@
                         <p class="booking-info-value">Nightly</p>
                     </div>
                     <div class="booking-info-item">
-                        <p class="booking-info-label">Guests</p>
+                        <p class="booking-info-label">Total Guests</p>
                         <p class="booking-info-value">{{ $booking->guests }}</p>
+                    </div>
+                    <div class="booking-info-item">
+                        <p class="booking-info-label">Standard Occupancy</p>
+                        <p class="booking-info-value">{{ $standardGuests }} guests</p>
+                    </div>
+                    <div class="booking-info-item">
+                        <p class="booking-info-label">Extra Bedding Needed</p>
+                        <p class="booking-info-value">{{ $booking->extra_bedding_count }}</p>
                     </div>
                     <div class="booking-info-item">
                         <p class="booking-info-label">Nights</p>
@@ -598,11 +656,106 @@
                 @endif
             </section>
 
-            <section class="booking-shell p-3 p-lg-4 mb-4">
+            <section class="booking-shell p-3 p-lg-4 mb-4" id="occupancy-update">
+                <h2 class="h5 mb-2">Occupancy Update</h2>
+                <p class="booking-note mb-3">All rooms use a standard 2-guest setup. Guests beyond 2 require extra bedding approval from staff.</p>
+                <form method="POST" action="{{ route('staff.bookings.occupancy', $booking) }}" class="row g-3">
+                    @csrf
+                    @method('PATCH')
+                    @if(!empty($returnTo))
+                        <input type="hidden" name="return_to" value="{{ $returnTo }}">
+                    @endif
+                    <input type="hidden" name="stay_on_booking" value="1">
+                    <input type="hidden" name="redirect_section" value="occupancy-update">
+                    <div class="col-md-4">
+                        <label class="form-label">Adults</label>
+                        <input type="number" name="adults" min="1" max="20" class="form-control @error('adults') is-invalid @enderror" value="{{ $currentAdults }}" required>
+                        @error('adults')
+                            <div class="invalid-feedback">{{ $message }}</div>
+                        @enderror
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Kids</label>
+                        <input type="number" name="kids" min="0" max="20" class="form-control @error('kids') is-invalid @enderror" value="{{ $currentKids }}">
+                        @error('kids')
+                            <div class="invalid-feedback">{{ $message }}</div>
+                        @enderror
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Current Total Guests</label>
+                        <input type="text" class="form-control" value="{{ $currentOccupancyTotal }}" disabled>
+                    </div>
+                    <div class="col-12">
+                        <div class="form-check">
+                            <input
+                                class="form-check-input @error('extra_bedding_confirmed') is-invalid @enderror"
+                                type="checkbox"
+                                value="1"
+                                id="extra_bedding_confirmed"
+                                name="extra_bedding_confirmed"
+                                @checked(old('extra_bedding_confirmed', $booking->extra_bedding_count > 0))
+                            >
+                            <label class="form-check-label" for="extra_bedding_confirmed">
+                                Confirm extra bedding approval.
+                                @if($currentExtraBedding > 0)
+                                    This update adds {{ $currentExtraBedding }} guest{{ $currentExtraBedding === 1 ? '' : 's' }} beyond the 2-guest standard occupancy.
+                                @else
+                                    This is only required when the total guest count goes above 2.
+                                @endif
+                            </label>
+                            @error('extra_bedding_confirmed')
+                                <div class="invalid-feedback d-block">{{ $message }}</div>
+                            @enderror
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <button type="submit" class="btn btn-staff w-100">Save occupancy</button>
+                    </div>
+                </form>
+            </section>
+
+            @if($latestRefundRequest)
+                <section class="booking-shell p-3 p-lg-4 mb-4" id="refund-request">
+                    <h2 class="h5 mb-2">Refund Request</h2>
+                    <p class="booking-note mb-3">Review the submitted refund reason here before coordinating refund approval or payment return.</p>
+                    <div class="booking-info-grid mb-3">
+                        <div class="booking-info-item">
+                            <p class="booking-info-label">Request Status</p>
+                            <p class="booking-info-value">{{ $refundRequestStatusLabel }}</p>
+                        </div>
+                        <div class="booking-info-item">
+                            <p class="booking-info-label">Requested At</p>
+                            <p class="booking-info-value">{{ optional($latestRefundRequest->requested_at)->format('M d, Y h:i A') ?? '-' }}</p>
+                        </div>
+                        <div class="booking-info-item">
+                            <p class="booking-info-label">Refund Method</p>
+                            <p class="booking-info-value">{{ $refundMethodLabel ?? '-' }}</p>
+                        </div>
+                        <div class="booking-info-item">
+                            <p class="booking-info-label">Refund Amount</p>
+                            <p class="booking-info-value">PHP {{ number_format((float) ($booking->payment?->amount ?? 0), 2) }}</p>
+                        </div>
+                    </div>
+                    <div class="booking-info-item mb-3">
+                        <p class="booking-info-label">Refund Reason</p>
+                        <p class="booking-info-value">{{ $latestRefundRequest->reason ?: 'No refund reason submitted.' }}</p>
+                    </div>
+                    @if(filled($latestRefundRequest->notes))
+                        <p class="booking-note mb-0"><strong>System Note:</strong> {{ $latestRefundRequest->notes }}</p>
+                    @endif
+                </section>
+            @endif
+
+            <section class="booking-shell p-3 p-lg-4 mb-4" id="internal-staff-notes">
                 <h2 class="h5 mb-3">Internal Staff Notes</h2>
                 <form method="POST" action="{{ route('staff.bookings.staff-notes', $booking) }}" class="row g-3">
                     @csrf
                     @method('PATCH')
+                    @if(!empty($returnTo))
+                        <input type="hidden" name="return_to" value="{{ $returnTo }}">
+                    @endif
+                    <input type="hidden" name="stay_on_booking" value="1">
+                    <input type="hidden" name="redirect_section" value="internal-staff-notes">
                     <div class="col-12">
                         <label class="form-label">Visible to staff/admin only</label>
                         <textarea
@@ -618,30 +771,9 @@
                 </form>
             </section>
 
-            <section class="booking-shell p-3 p-lg-4">
-                <h2 class="h5 mb-2">Manual Status Update</h2>
-                <form method="POST" action="{{ route('staff.bookings.update-status', $booking) }}" class="row g-3 align-items-end" data-confirm="Apply this booking status update?">
-                    @csrf
-                    @method('PATCH')
-                    @if(!empty($returnTo))
-                        <input type="hidden" name="return_to" value="{{ $returnTo }}">
-                    @endif
-                    <div class="col-md-4">
-                        <label class="form-label">Status</label>
-                        <select class="form-select" name="status" required>
-                            @foreach(['pending', 'confirmed', 'cancelled', 'completed'] as $status)
-                                <option value="{{ $status }}" {{ $booking->status === $status ? 'selected' : '' }}>{{ ucfirst($status) }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <button type="submit" class="btn btn-staff w-100">Update</button>
-                    </div>
-                </form>
-            </section>
         </div>
         <div class="col-xl-4">
-            <aside class="booking-side-shell p-3 p-lg-4">
+            <aside class="booking-side-shell p-3 p-lg-4" id="payment-desk">
                 <h2 class="h5 mb-3">Payment Desk</h2>
 
                 @if($isOnlineAwaitingVerification)
@@ -655,6 +787,8 @@
                             @if(!empty($returnTo))
                                 <input type="hidden" name="return_to" value="{{ $returnTo }}">
                             @endif
+                            <input type="hidden" name="stay_on_booking" value="1">
+                            <input type="hidden" name="redirect_section" value="payment-desk">
                             <button type="submit" class="btn btn-staff w-100">Approve Online Payment</button>
                         </form>
                         <form method="POST" action="{{ route('staff.bookings.reject-online-payment', $booking) }}" data-confirm="Reject this online payment submission?">
@@ -663,6 +797,8 @@
                             @if(!empty($returnTo))
                                 <input type="hidden" name="return_to" value="{{ $returnTo }}">
                             @endif
+                            <input type="hidden" name="stay_on_booking" value="1">
+                            <input type="hidden" name="redirect_section" value="payment-desk">
                             <button type="submit" class="btn btn-staff-outline w-100">Reject Submission</button>
                         </form>
                     </div>
@@ -675,6 +811,8 @@
                         @if(!empty($returnTo))
                             <input type="hidden" name="return_to" value="{{ $returnTo }}">
                         @endif
+                        <input type="hidden" name="stay_on_booking" value="1">
+                        <input type="hidden" name="redirect_section" value="payment-desk">
                         <div class="col-12">
                             <label class="form-label">Payment Method</label>
                             <select class="form-select" name="method" required>
@@ -710,6 +848,12 @@
                 </div>
 
                 @if($booking->payment)
+                    @if($latestRefundRequest)
+                        <div class="booking-meta-line">
+                            <span class="booking-meta-label">Refund Request</span>
+                            <span class="booking-meta-value">{{ $refundRequestStatusLabel }}</span>
+                        </div>
+                    @endif
                     <div class="booking-meta-line">
                         <span class="booking-meta-label">Method</span>
                         <span class="booking-meta-value">{{ \App\Models\Payment::methodLabel($booking->payment->method) }}</span>
@@ -718,6 +862,12 @@
                         <span class="booking-meta-label">Status</span>
                         <span class="booking-meta-value">{{ ucfirst($booking->payment->status) }}</span>
                     </div>
+                    @if($booking->payment_status === 'refund_pending' && $refundMethodLabel)
+                        <div class="booking-meta-line">
+                            <span class="booking-meta-label">Refund Method</span>
+                            <span class="booking-meta-value">{{ $refundMethodLabel }}</span>
+                        </div>
+                    @endif
                     @if(filled($booking->payment->customer_reference))
                         <div class="booking-meta-line">
                             <span class="booking-meta-label">Customer Ref No.</span>
@@ -766,16 +916,15 @@
                             <span class="booking-meta-value">{{ optional($booking->payment->verified_at)->format('M d, Y h:i A') ?? '-' }}</span>
                         </div>
                     @endif
-                    @if($booking->payment->verifiedByStaff)
-                        <div class="booking-meta-line">
-                            <span class="booking-meta-label">Verified By</span>
-                            <span class="booking-meta-value">{{ $booking->payment->verifiedByStaff->name }}</span>
-                        </div>
-                    @endif
                     <div class="booking-meta-line">
                         <span class="booking-meta-label">Transaction Ref</span>
                         <span class="booking-meta-value">{{ $booking->payment->transaction_reference ?? '-' }}</span>
                     </div>
+                    @if($booking->payment_status === 'refund_pending' && $refundMethodLabel)
+                        <p class="booking-note mb-0 mt-3">
+                            Refund should be processed using the guest's original payment method: <strong>{{ $refundMethodLabel }}</strong>.
+                        </p>
+                    @endif
                 @else
                     <p class="text-secondary mb-0">No payment record yet.</p>
                 @endif

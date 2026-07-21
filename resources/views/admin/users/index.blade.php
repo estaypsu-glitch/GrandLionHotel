@@ -100,9 +100,6 @@
         <div>
             <h1 class="h4 mb-1">Customer Accounts</h1>
         </div>
-        <a href="{{ route('admin.users.index', ['profile' => 'incomplete']) }}" class="btn btn-ta-outline">
-            <i class="bi bi-person-exclamation me-1"></i>View Incomplete Profiles
-        </a>
     </div>
 
     <div class="row g-3 mb-4">

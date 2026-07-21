@@ -8,7 +8,22 @@ class PageController extends Controller
 {
     public function about()
     {
-        return view('pages.about');
+        $roomTypes = Room::query()
+            ->whereNotNull('type')
+            ->where('type', '!=', '')
+            ->select('type')
+            ->distinct()
+            ->orderBy('type')
+            ->pluck('type');
+
+        $aboutStats = [
+            'total_rooms' => Room::query()->count(),
+            'available_rooms' => Room::query()->availableForBooking()->count(),
+            'room_types' => $roomTypes->count(),
+            'starting_rate' => Room::query()->min('price_per_night'),
+        ];
+
+        return view('pages.about', compact('aboutStats', 'roomTypes'));
     }
 
     public function terms()

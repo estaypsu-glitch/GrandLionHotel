@@ -3,13 +3,23 @@
 namespace App\Http\Controllers;
 
 use App\Models\Room;
+use App\Services\AvailabilityService;
+use App\Services\PricingService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Throwable;
 
 class RoomController extends Controller
 {
+    public function __construct(
+        private readonly PricingService $pricingService,
+        private readonly AvailabilityService $availabilityService
+    ) {
+    }
+
     public function index(Request $request)
     {
         if ($normalizedStay = $this->normalizeStayDates($request)) {
@@ -27,13 +37,30 @@ class RoomController extends Controller
         $this->applySort($roomsQuery, $request->string('sort', 'recommended')->toString());
 
         $rooms = $roomsQuery->paginate(9)->withQueryString();
+        $this->attachStayPricing($rooms->getCollection(), $stay);
 
         return view('rooms.search', compact('rooms', 'stay'));
     }
 
-    public function show(Room $room)
+    public function show(Request $request, Room $room)
     {
-        return view('rooms.show', compact('room'));
+        if ($normalizedStay = $this->normalizeStayDates($request)) {
+            return redirect()->route('rooms.show', array_merge(
+                ['room' => $room],
+                $request->except(['check_in', 'check_out']),
+                $normalizedStay
+            ));
+        }
+
+        $stay = $this->resolveStayFilters($request);
+        $pricingPreview = $stay['is_valid']
+            ? $this->pricingService->quoteStay($room, $stay['check_in'], $stay['check_out'])
+            : null;
+        $stayAvailability = $stay['is_valid']
+            ? ($room->is_available && $this->availabilityService->isRoomAvailable($room, $stay['check_in'], $stay['check_out']))
+            : $room->is_available;
+
+        return view('rooms.show', compact('room', 'stay', 'pricingPreview', 'stayAvailability'));
     }
 
     public function search(Request $request)
@@ -53,8 +80,45 @@ class RoomController extends Controller
         $this->applySort($roomsQuery, $request->string('sort', 'recommended')->toString());
 
         $rooms = $roomsQuery->paginate(9)->withQueryString();
+        $this->attachStayPricing($rooms->getCollection(), $stay);
 
         return view('rooms.search', compact('rooms', 'stay'));
+    }
+
+    public function pricingPreview(Request $request, Room $room): JsonResponse
+    {
+        if ($normalizedStay = $this->normalizeStayDates($request)) {
+            $stay = $this->resolveStayFilters(new Request($normalizedStay));
+        } else {
+            $stay = $this->resolveStayFilters($request);
+        }
+
+        $requestedGuests = max(1, $request->integer('guests', Room::standardGuestCapacity()));
+
+        if (!$stay['is_valid']) {
+            return response()->json([
+                'message' => 'Select a valid check-in and check-out date range.',
+                'errors' => [
+                    'check_out' => ['Check-out must be at least one day after check-in.'],
+                ],
+            ], 422);
+        }
+
+        $stayAvailable = $room->is_available
+            && $this->availabilityService->isRoomAvailable($room, $stay['check_in'], $stay['check_out']);
+
+        return response()->json([
+            'pricing' => $this->pricingService->quoteStay($room, $stay['check_in'], $stay['check_out'], $requestedGuests),
+            'availability' => [
+                'room_status_available' => $room->is_available,
+                'stay_available' => $stayAvailable,
+                'message' => !$room->is_available
+                    ? 'This room is currently unavailable.'
+                    : ($stayAvailable
+                        ? 'Available for your selected dates.'
+                        : 'Unavailable for your selected dates.'),
+            ],
+        ]);
     }
 
     private function applySort(Builder $roomsQuery, string $sort): void
@@ -62,7 +126,6 @@ class RoomController extends Controller
         match ($sort) {
             'price_low' => $roomsQuery->orderBy('price_per_night'),
             'price_high' => $roomsQuery->orderByDesc('price_per_night'),
-            'capacity' => $roomsQuery->orderByDesc('capacity')->orderBy('price_per_night'),
             'newest' => $roomsQuery->latest(),
             default => $roomsQuery->orderByAvailability('desc')->orderBy('price_per_night'),
         };
@@ -81,10 +144,6 @@ class RoomController extends Controller
                             ->orWhere('view_type', 'like', '%'.$keyword.'%');
                     });
                 }
-            )
-            ->when(
-                $request->filled('guests'),
-                fn (Builder $query) => $query->where('capacity', '>=', max(1, $request->integer('guests')))
             )
             ->when(
                 $request->filled('max_price') && is_numeric($request->input('max_price')),
@@ -190,5 +249,21 @@ class RoomController extends Controller
             'check_in' => $normalizedCheckIn->toDateString(),
             'check_out' => $normalizedCheckOut->toDateString(),
         ];
+    }
+
+    private function attachStayPricing(Collection $rooms, array $stay): void
+    {
+        if (!$stay['is_valid']) {
+            return;
+        }
+
+        $rooms->transform(function (Room $room) use ($stay): Room {
+            $room->setAttribute(
+                'stay_pricing',
+                $this->pricingService->quoteStay($room, $stay['check_in'], $stay['check_out'])
+            );
+
+            return $room;
+        });
     }
 }

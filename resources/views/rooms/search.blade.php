@@ -51,7 +51,6 @@
             grid-template-columns: repeat(15, minmax(0, 1fr));
         }
         .search-filter-grid .field-type { grid-column: span 3; }
-        .search-filter-grid .field-guests { grid-column: span 2; }
         .search-filter-grid .field-check-in { grid-column: span 2; }
         .search-filter-grid .field-check-out { grid-column: span 2; }
         .search-filter-grid .field-max-price { grid-column: span 2; }
@@ -129,7 +128,6 @@
             .search-filter-grid .field-sort {
                 grid-column: span 4;
             }
-            .search-filter-grid .field-guests,
             .search-filter-grid .field-check-in,
             .search-filter-grid .field-check-out,
             .search-filter-grid .field-max-price {
@@ -142,7 +140,6 @@
         }
         @media (max-width: 991.98px) {
             .search-filter-grid .field-type,
-            .search-filter-grid .field-guests,
             .search-filter-grid .field-check-in,
             .search-filter-grid .field-check-out,
             .search-filter-grid .field-max-price,
@@ -154,7 +151,6 @@
         }
         @media (max-width: 575.98px) {
             .search-filter-grid .field-type,
-            .search-filter-grid .field-guests,
             .search-filter-grid .field-check-in,
             .search-filter-grid .field-check-out,
             .search-filter-grid .field-max-price,
@@ -178,12 +174,10 @@
             'nights' => null,
             'is_valid' => false,
         ];
+        $standardGuests = \App\Models\Room::standardGuestCapacity();
         $activeFilters = [];
         if (filled(request('type'))) {
             $activeFilters[] = ['label' => 'Type', 'value' => request('type')];
-        }
-        if (filled(request('guests'))) {
-            $activeFilters[] = ['label' => 'Guests', 'value' => request('guests')];
         }
         if (filled(request('max_price'))) {
             $activeFilters[] = ['label' => 'Max Price', 'value' => 'PHP '.number_format((int) request('max_price'))];
@@ -194,91 +188,90 @@
         if (request('available_only')) {
             $activeFilters[] = ['label' => 'Availability', 'value' => 'Available only'];
         }
+        $hasSignedInAccess = auth('customer')->check()
+            || auth('admin')->check()
+            || auth('staff')->check();
     @endphp
 
     <section class="search-hero p-4 p-lg-5 mb-4">
-        <div class="position-relative d-flex flex-wrap justify-content-between align-items-end gap-3">
+        <div class="position-relative">
             <div>
                 <span class="search-tag"><i class="bi bi-stars"></i> Curated Search</span>
                 <h1 class="h3 mt-2 mb-2">Find Your Best Match</h1>
                 <p class="text-white-50 mb-0">Use focused filters and compare premium room options quickly.</p>
             </div>
-            <a href="{{ route('rooms.index') }}" class="btn btn-ta-outline">Back to all rooms</a>
         </div>
     </section>
 
-    <section class="search-filter-shell p-3 p-lg-4 mb-4">
-        <form method="GET" action="{{ route('rooms.search') }}" class="search-filter-grid">
-            <div class="field-type">
-                <label class="form-label">Room type or view</label>
-                <input type="text" name="type" class="form-control" value="{{ request('type') }}" placeholder="Suite, Deluxe, Nature View">
-            </div>
-            <div class="field-guests">
-                <label class="form-label">Guests</label>
-                <input type="number" name="guests" min="1" class="form-control" value="{{ request('guests') }}">
-            </div>
-            <div class="field-check-in">
-                <label class="form-label">Check-in</label>
-                <input type="date" name="check_in" min="{{ now()->toDateString() }}" class="form-control" value="{{ request('check_in') }}">
-            </div>
-            <div class="field-check-out">
-                <label class="form-label">Check-out</label>
-                <input type="date" name="check_out" min="{{ now()->addDay()->toDateString() }}" class="form-control" value="{{ request('check_out') }}">
-            </div>
-            <div class="field-max-price">
-                <label class="form-label">Max &#8369;/night</label>
-                <input type="number" name="max_price" min="0" step="100" class="form-control" value="{{ request('max_price') }}" placeholder="5000">
-            </div>
-            <div class="field-sort">
-                <label class="form-label">Sort by</label>
-                <select class="form-select" name="sort">
-                    <option value="recommended" @selected(request('sort', 'recommended') === 'recommended')>Recommended</option>
-                    <option value="price_low" @selected(request('sort') === 'price_low')>Price: Low to High</option>
-                    <option value="price_high" @selected(request('sort') === 'price_high')>Price: High to Low</option>
-                    <option value="capacity" @selected(request('sort') === 'capacity')>Highest Capacity</option>
-                    <option value="newest" @selected(request('sort') === 'newest')>Newest Listings</option>
-                </select>
-            </div>
-            <div class="field-availability">
-                <div class="form-check mt-3 mt-md-0">
-                    <input class="form-check-input" type="checkbox" name="available_only" value="1" id="availableOnly" {{ request('available_only') ? 'checked' : '' }}>
-                    <label class="form-check-label" for="availableOnly">Available only</label>
+    @if($hasSignedInAccess)
+        <section class="search-filter-shell p-3 p-lg-4 mb-4">
+            <form method="GET" action="{{ route('rooms.search') }}" class="search-filter-grid">
+                <div class="field-type">
+                    <label class="form-label">Room type or view</label>
+                    <input type="text" name="type" class="form-control" value="{{ request('type') }}" placeholder="Suite, Deluxe, Nature View">
                 </div>
-            </div>
-            <div class="field-actions">
-                <div class="search-filter-actions">
-                    <button type="submit" class="btn btn-ta">Apply Filters</button>
-                    @if(request()->query())
-                        <a href="{{ route('rooms.search') }}" class="btn btn-ta-outline">Reset</a>
-                    @endif
+                <div class="field-check-in">
+                    <label class="form-label">Check-in</label>
+                    <input type="date" name="check_in" min="{{ now()->toDateString() }}" class="form-control" value="{{ request('check_in') }}">
                 </div>
-            </div>
-        </form>
+                <div class="field-check-out">
+                    <label class="form-label">Check-out</label>
+                    <input type="date" name="check_out" min="{{ now()->addDay()->toDateString() }}" class="form-control" value="{{ request('check_out') }}">
+                </div>
+                <div class="field-max-price">
+                    <label class="form-label">Max &#8369;/night</label>
+                    <input type="number" name="max_price" min="0" step="100" class="form-control" value="{{ request('max_price') }}" placeholder="5000">
+                </div>
+                <div class="field-sort">
+                    <label class="form-label">Sort by</label>
+                    <select class="form-select" name="sort">
+                        <option value="recommended" @selected(request('sort', 'recommended') === 'recommended')>Recommended</option>
+                        <option value="price_low" @selected(request('sort') === 'price_low')>Price: Low to High</option>
+                        <option value="price_high" @selected(request('sort') === 'price_high')>Price: High to Low</option>
+                        <option value="newest" @selected(request('sort') === 'newest')>Newest Listings</option>
+                    </select>
+                </div>
+                <div class="field-availability">
+                    <div class="form-check mt-3 mt-md-0">
+                        <input class="form-check-input" type="checkbox" name="available_only" value="1" id="availableOnly" {{ request('available_only') ? 'checked' : '' }}>
+                        <label class="form-check-label" for="availableOnly">Available only</label>
+                    </div>
+                </div>
+                <div class="field-actions">
+                    <div class="search-filter-actions">
+                        <button type="submit" class="btn btn-ta">Apply Filters</button>
+                        @if(request()->query())
+                            <a href="{{ route('rooms.search') }}" class="btn btn-ta-outline">Reset</a>
+                        @endif
+                    </div>
+                </div>
+            </form>
 
-        @if($stay['is_valid'])
-            <div class="search-selected-stay mt-3">
-                <p class="meta mb-0">Selected Stay</p>
-                <div class="small">
-                    <strong>{{ \Carbon\Carbon::parse($stay['check_in'])->format('M d, Y') }}</strong>
-                    to
-                    <strong>{{ \Carbon\Carbon::parse($stay['check_out'])->format('M d, Y') }}</strong>
-                    <span class="text-secondary ms-1">({{ $stay['nights'] }} night{{ $stay['nights'] === 1 ? '' : 's' }})</span>
+            @if($stay['is_valid'])
+                <div class="search-selected-stay mt-3">
+                    <p class="meta mb-0">Selected Stay</p>
+                    <div class="small">
+                        <strong>{{ \Carbon\Carbon::parse($stay['check_in'])->format('M d, Y') }}</strong>
+                        to
+                        <strong>{{ \Carbon\Carbon::parse($stay['check_out'])->format('M d, Y') }}</strong>
+                        <span class="text-secondary ms-1">({{ $stay['nights'] }} night{{ $stay['nights'] === 1 ? '' : 's' }})</span>
+                    </div>
                 </div>
-            </div>
-        @elseif(filled(request('check_in')) || filled(request('check_out')))
-            <div class="alert alert-warning mb-0 mt-3 py-2 small">
-                Select a valid date range to apply real-time availability filtering.
-            </div>
-        @endif
+            @elseif(filled(request('check_in')) || filled(request('check_out')))
+                <div class="alert alert-warning mb-0 mt-3 py-2 small">
+                    Select a valid date range to apply real-time availability filtering.
+                </div>
+            @endif
 
-        @if(!empty($activeFilters))
-            <div class="search-active-wrap">
-                @foreach($activeFilters as $filter)
-                    <span class="search-chip">{{ $filter['label'] }}: <strong>{{ $filter['value'] }}</strong></span>
-                @endforeach
-            </div>
-        @endif
-    </section>
+            @if(!empty($activeFilters))
+                <div class="search-active-wrap">
+                    @foreach($activeFilters as $filter)
+                        <span class="search-chip">{{ $filter['label'] }}: <strong>{{ $filter['value'] }}</strong></span>
+                    @endforeach
+                </div>
+            @endif
+        </section>
+    @endif
 
     <div class="search-results-head">
         <h2 class="h5 mb-0">Search Results</h2>
@@ -288,20 +281,29 @@
     <div class="row g-4">
         @forelse($rooms as $room)
             <div class="col-md-6 col-xl-4">
+                @php
+                    $stayPricing = $stay['is_valid'] ? ($room->stay_pricing ?? null) : null;
+                    $roomShowParameters = ['room' => $room];
+
+                    if ($stay['is_valid']) {
+                        $roomShowParameters['check_in'] = $stay['check_in'];
+                        $roomShowParameters['check_out'] = $stay['check_out'];
+                    }
+                @endphp
                 <article class="soft-card h-100 result-card overflow-hidden">
-                    <a href="{{ route('rooms.show', $room) }}" aria-label="View {{ $room->name }} details">
+                    <a href="{{ route('rooms.show', $roomShowParameters) }}" aria-label="View {{ $room->name }} details">
                         <img src="{{ $room->image_url }}" alt="{{ $room->name }}" class="w-100 object-cover" style="height: 220px;">
                     </a>
                     <div class="p-3 p-lg-4">
                         <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
                             <div>
-                                <h2 class="h5 mb-1"><a href="{{ route('rooms.show', $room) }}" class="text-decoration-none text-dark">{{ $room->name }}</a></h2>
+                                <h2 class="h5 mb-1"><a href="{{ route('rooms.show', $roomShowParameters) }}" class="text-decoration-none text-dark">{{ $room->name }}</a></h2>
                                 <p class="hotel-meta mb-0">
                                     {{ $room->type }}
                                     @if(filled($room->view_type))
                                         &middot; {{ $room->view_type }}
                                     @endif
-                                    &middot; Up to {{ $room->capacity }} guests
+                                    &middot; Standard occupancy: {{ $standardGuests }} guests
                                 </p>
                             </div>
                             <span class="badge-status {{ $room->is_available ? 'available' : 'unavailable' }}">{{ $room->is_available ? 'Available' : 'Unavailable' }}</span>
@@ -309,15 +311,34 @@
                         <p class="text-secondary small mb-3">{{ \Illuminate\Support\Str::limit($room->description ?: 'Comfortable stay with practical in-room amenities.', 85) }}</p>
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
-                                <div class="price-tag">&#8369;{{ number_format($room->price_per_night, 2) }}</div>
-                                <small class="text-secondary">per night</small>
+                                @if($stayPricing)
+                                    <div class="price-tag">&#8369;{{ number_format($stayPricing['average_nightly_rate'], 2) }}</div>
+                                    @if($stayPricing['has_date_discount'])
+                                        <small class="text-secondary d-block">
+                                            <span class="text-decoration-line-through">&#8369;{{ number_format($stayPricing['base_nightly_rate'], 2) }}</span>
+                                            base / night
+                                        </small>
+                                        <small class="text-success d-block">
+                                            Date discount on {{ $stayPricing['discounted_nights'] }} night{{ $stayPricing['discounted_nights'] === 1 ? '' : 's' }}
+                                            &middot; Save &#8369;{{ number_format($stayPricing['discount_amount'], 2) }}
+                                        </small>
+                                    @else
+                                        <small class="text-secondary d-block">selected-stay average / night</small>
+                                    @endif
+                                    <small class="text-secondary d-block">
+                                        &#8369;{{ number_format($stayPricing['total'], 2) }} total for {{ $stayPricing['nights'] }} night{{ $stayPricing['nights'] === 1 ? '' : 's' }}
+                                    </small>
+                                @else
+                                    <div class="price-tag">&#8369;{{ number_format($room->price_per_night, 2) }}</div>
+                                    <small class="text-secondary">per night</small>
+                                @endif
                             </div>
                             <div class="search-card-actions">
-                                <a href="{{ route('rooms.show', $room) }}" class="btn btn-ta-outline btn-sm">Details</a>
+                                <a href="{{ route('rooms.show', $roomShowParameters) }}" class="btn btn-ta-outline btn-sm">Details</a>
                                 @if($stay['is_valid'] && $room->is_available)
                                     @auth
                                         <a
-                                            href="{{ route('bookings.create', ['room' => $room, 'check_in' => $stay['check_in'], 'check_out' => $stay['check_out'], 'guests' => max(1, (int) request('guests', 1))]) }}"
+                                            href="{{ route('bookings.create', ['room' => $room, 'check_in' => $stay['check_in'], 'check_out' => $stay['check_out']]) }}"
                                             class="btn btn-ta btn-sm"
                                         >
                                             Book now

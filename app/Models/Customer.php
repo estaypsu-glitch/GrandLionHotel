@@ -29,4 +29,5 @@ class Customer extends Account
     {
         return $this->hasMany(Booking::class, 'customer_id', 'customer_id');
     }
+
 }

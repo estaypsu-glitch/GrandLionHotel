@@ -21,6 +21,7 @@ Route::get('/', [HomeController::class, 'index'])->name('home');
 
 Route::get('/rooms', [RoomController::class, 'index'])->name('rooms.index');
 Route::get('/rooms/search', [RoomController::class, 'search'])->name('rooms.search');
+Route::get('/rooms/{room}/pricing-preview', [RoomController::class, 'pricingPreview'])->name('rooms.pricing-preview');
 Route::get('/rooms/{room}', [RoomController::class, 'show'])->name('rooms.show');
 Route::get('/about', [PageController::class, 'about'])->name('about');
 Route::get('/gallery', [PageController::class, 'gallery'])->name('gallery');
@@ -82,6 +83,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth:admin', 'admin'])->gro
     Route::post('/rooms/date-discounts/bulk', [AdminRoomController::class, 'applyBulkDateDiscount'])->name('rooms.date-discounts.bulk');
     Route::get('/rooms/date-discounts', [AdminRoomController::class, 'dateDiscountsIndex'])->name('rooms.date-discounts.index');
     Route::patch('/rooms/date-discounts/range', [AdminRoomController::class, 'updateDateDiscountRange'])->name('rooms.date-discounts.range.update');
+    Route::delete('/rooms/date-discounts/range', [AdminRoomController::class, 'destroyDateDiscountRange'])->name('rooms.date-discounts.range.destroy');
 
     Route::get('/bookings', [AdminBookingController::class, 'index'])->name('bookings.index');
     Route::get('/bookings/{booking}', [AdminBookingController::class, 'show'])->name('bookings.show');
@@ -124,6 +126,7 @@ Route::prefix('staff')->name('staff.')->middleware(['auth:staff', 'staff'])->gro
     Route::patch('/bookings/{booking}/apply-reschedule-request', [StaffBookingController::class, 'applyRescheduleRequest'])->name('bookings.apply-reschedule-request');
     Route::patch('/bookings/{booking}/decline-reschedule-request', [StaffBookingController::class, 'declineRescheduleRequest'])->name('bookings.decline-reschedule-request');
     Route::patch('/bookings/{booking}/decline-room-transfer-request', [StaffBookingController::class, 'declineRoomTransferRequest'])->name('bookings.decline-room-transfer-request');
+    Route::patch('/bookings/{booking}/occupancy', [StaffBookingController::class, 'updateOccupancy'])->name('bookings.occupancy');
     Route::patch('/bookings/{booking}/staff-notes', [StaffBookingController::class, 'updateStaffNotes'])->name('bookings.staff-notes');
     Route::patch('/bookings/{booking}/status', [StaffBookingController::class, 'updateStatus'])->name('bookings.update-status');
 });

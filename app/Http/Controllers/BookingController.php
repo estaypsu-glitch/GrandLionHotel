@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use App\Mail\BookingCancelledMail;
 use App\Http\Requests\StoreBookingRequest;
 use App\Models\Booking;
+use App\Models\Payment;
 use App\Models\Room;
 use App\Services\AvailabilityService;
 use App\Services\PricingService;
+use App\Services\RefundRequestService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -22,7 +24,8 @@ class BookingController extends Controller
 {
     public function __construct(
         private readonly AvailabilityService $availabilityService,
-        private readonly PricingService $pricingService
+        private readonly PricingService $pricingService,
+        private readonly RefundRequestService $refundRequestService
     ) {
     }
 
@@ -40,8 +43,23 @@ class BookingController extends Controller
         }
 
         $prefill = $this->resolveBookingPrefill($request, $room);
+        $pricingPreview = null;
 
-        return view('bookings.create', compact('room', 'prefill'));
+        if ($prefill['date_selection_valid']) {
+            $pricingPreview = $this->pricingService->quoteStay(
+                $room,
+                $prefill['check_in'],
+                $prefill['check_out']
+            );
+        } elseif (!$prefill['has_date_selection']) {
+            $pricingPreview = $this->pricingService->quoteStay(
+                $room,
+                $prefill['check_in'],
+                $prefill['check_out']
+            );
+        }
+
+        return view('bookings.create', compact('room', 'prefill', 'pricingPreview'));
     }
 
     public function store(StoreBookingRequest $request)
@@ -133,7 +151,8 @@ class BookingController extends Controller
                 $totalPrice = $this->pricingService->calculateTotal(
                     $lockedRoom,
                     $checkIn,
-                    $checkOut
+                    $checkOut,
+                    $request->integer('guests')
                 );
 
                 $booking = Booking::create([
@@ -227,7 +246,7 @@ class BookingController extends Controller
     public function show(Booking $booking)
     {
         $this->authorizeOwner($booking);
-        $booking->loadMissing(['room', 'payment', 'guestDetail']);
+        $booking->loadMissing(['room', 'payment', 'guestDetail', 'latestRefundRequest']);
         $this->ensurePaidTransactionReference($booking);
 
         return view('bookings.show', compact('booking'));
@@ -243,14 +262,25 @@ class BookingController extends Controller
                 ->withErrors(['booking' => 'This booking can no longer be cancelled online.']);
         }
 
+        $validated = [];
+        if ($booking->payment_status === 'paid') {
+            $validated = $request->validate([
+                'refund_reason' => ['required', 'string', 'max:1000'],
+            ], [
+                'refund_reason.required' => 'Please tell us why you are requesting the refund.',
+                'refund_reason.max' => 'Refund reason must not exceed 1000 characters.',
+            ]);
+        }
+
         $newPaymentStatus = $booking->payment_status === 'paid' ? 'refund_pending' : $booking->payment_status;
+        $refundMethodLabel = null;
 
         $booking->update([
             'status' => 'cancelled',
         ]);
 
         if ($newPaymentStatus === 'refund_pending') {
-            $booking->payment()->updateOrCreate(
+            $payment = $booking->payment()->updateOrCreate(
                 ['booking_id' => $booking->id],
                 [
                     'amount' => (float) ($booking->payment?->amount ?? $booking->total_price),
@@ -258,6 +288,12 @@ class BookingController extends Controller
                     'status' => 'refund_pending',
                 ]
             );
+            $refundMethodLabel = Payment::methodLabel((string) $payment->method);
+
+            $this->refundRequestService->createPendingForCancellation($booking, $payment, [
+                'reason' => trim((string) ($validated['refund_reason'] ?? '')) ?: 'Customer cancelled the booking and requested a refund.',
+                'notes' => 'Customer initiated the cancellation from the booking page. Refund request was created automatically from the cancellation flow.',
+            ]);
         }
 
         $booking->loadMissing(['user', 'room', 'payment', 'assignedStaff', 'guestDetail']);
@@ -271,7 +307,8 @@ class BookingController extends Controller
         return redirect()
             ->route('bookings.show', $booking)
             ->with('status', $newPaymentStatus === 'refund_pending'
-                ? 'Booking cancelled. Your refund is being processed.'
+                ? 'Booking cancelled. Your refund request was submitted and will be processed through your original payment method'
+                    .($refundMethodLabel ? ': '.$refundMethodLabel.'.' : '.')
                 : 'Booking cancelled successfully.');
     }
 
@@ -435,12 +472,13 @@ class BookingController extends Controller
         $today = Carbon::today();
         $minimumCheckIn = $today->toDateString();
         $minimumCheckOut = $today->copy()->addDay()->toDateString();
+        $standardGuests = Room::standardGuestCapacity();
         $prefill = [
             'check_in' => $minimumCheckIn,
             'check_out' => $minimumCheckOut,
-            'guests' => max(1, min($room->capacity, $request->integer('guests', 1))),
-            'adults' => max(1, min($room->capacity, $request->integer('adults', $request->integer('guests', 1)))),
-            'kids' => max(0, min($room->capacity, $request->integer('kids', 0))),
+            'guests' => $standardGuests,
+            'adults' => $standardGuests,
+            'kids' => 0,
             'minimum_check_in' => $minimumCheckIn,
             'minimum_check_out' => $minimumCheckOut,
             'has_date_selection' => false,
@@ -448,13 +486,6 @@ class BookingController extends Controller
             'unavailable_for_selected_dates' => false,
             'availability_message' => null,
         ];
-
-        if (($prefill['adults'] + $prefill['kids']) > $room->capacity) {
-            $prefill['kids'] = max(0, $room->capacity - $prefill['adults']);
-        }
-
-        $guestTotal = max(1, min($room->capacity, $prefill['adults'] + $prefill['kids']));
-        $prefill['guests'] = $guestTotal;
 
         $checkInInput = trim((string) $request->input('check_in', ''));
         $checkOutInput = trim((string) $request->input('check_out', ''));
@@ -521,7 +552,6 @@ class BookingController extends Controller
             'adults' => data_get($reservationMeta, 'adults'),
             'kids' => data_get($reservationMeta, 'kids'),
             'payment_preference' => data_get($reservationMeta, 'payment_preference'),
-            'staff_id' => data_get($reservationMeta, 'staff_id'),
         ], static fn ($value): bool => !is_null($value) && $value !== '');
     }
 

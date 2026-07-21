@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Models\Room;
+use App\Models\RoomStatus;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -17,16 +18,16 @@ class RoomFactory extends Factory
         $types = ['Standard', 'Deluxe', 'Suite', 'Family'];
         $viewTypes = ['Nature View', 'Garden View', 'Pool View', 'Mountain View', 'Courtyard View'];
         $nightlyPrice = fake()->randomFloat(2, 60, 350);
-        
+
         return [
             'name' => fake()->streetName().' Room',
             'type' => fake()->randomElement($types),
             'view_type' => fake()->randomElement($viewTypes),
             'description' => fake()->sentence(12),
             'price_per_night' => $nightlyPrice,
-            'capacity' => fake()->numberBetween(1, 6),
+            'capacity' => Room::standardGuestCapacity(),
             'image' => null,
-            'room_status_id' => \App\Models\RoomStatus::inRandomOrder()->first()?->id,
+            'room_status_id' => RoomStatus::query()->inRandomOrder()->value('room_status_id'),
         ];
     }
 }

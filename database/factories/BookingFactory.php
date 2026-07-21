@@ -18,7 +18,7 @@ class BookingFactory extends Factory
     public function configure(): static
     {
         return $this->afterCreating(function (Booking $booking): void {
-            $guestTotal = fake()->numberBetween(1, max(1, (int) $booking->room->capacity));
+            $guestTotal = Room::standardGuestCapacity();
             $booking->guestDetail()->create([
                 'first_name' => fake()->firstName(),
                 'last_name' => fake()->lastName(),
@@ -34,7 +34,7 @@ class BookingFactory extends Factory
                 'amount' => $booking->total_price,
                 'method' => $isPaid ? fake()->randomElement(['cash', 'bank_transfer', 'gcash', 'paymaya']) : 'pending',
                 'status' => $isPaid ? 'paid' : 'unpaid',
-                'transaction_reference' => $isPaid ? Payment::generateTransactionReference((int) $booking->id) : null,
+                'transaction_reference' => $isPaid ? Payment::generateTransactionReference((int) $booking->getKey()) : null,
                 'paid_at' => $isPaid ? now() : null,
             ]);
         });

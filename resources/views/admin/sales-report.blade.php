@@ -60,9 +60,6 @@
                 <h1 class="h4 mb-1">Sales Report</h1>
                 <p class="text-secondary mb-0">Paid sales for {{ $selectedRangeLabel }}</p>
             </div>
-            <a href="{{ route('admin.dashboard') }}" class="btn btn-ta-outline">
-                <i class="bi bi-arrow-left me-1"></i>Back to Dashboard
-            </a>
         </div>
 
         <section class="admin-report-shell p-3 p-lg-4 mb-4">

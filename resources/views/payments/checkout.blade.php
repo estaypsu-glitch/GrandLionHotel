@@ -13,9 +13,14 @@
         $selectedMethod = old('method', $preferredMethod);
         $selectedMethod = $legacyMethodMap[$selectedMethod] ?? $selectedMethod;
         $onlineMethods = ['instapay', 'credit_debit_card'];
+        $pricingQuote = $booking->pricingQuote();
         $billedUnits = max(1, $booking->nights());
         $subtotalAmount = (float) $booking->total_price;
-        $unitRate = $billedUnits > 0 ? round($subtotalAmount / $billedUnits, 2) : $subtotalAmount;
+        $roomSubtotal = (float) ($pricingQuote['room_total'] ?? $subtotalAmount);
+        $roomNightlyRate = (float) ($pricingQuote['base_nightly_rate'] ?? 0);
+        $extraBeddingCount = (int) ($pricingQuote['extra_bedding_count'] ?? 0);
+        $extraBeddingFeePerNight = (float) ($pricingQuote['extra_bedding_fee_per_night'] ?? 0);
+        $extraBeddingTotal = (float) ($pricingQuote['extra_bedding_total'] ?? 0);
     @endphp
 
     <div class="row justify-content-center">
@@ -29,9 +34,13 @@
                     <p class="mb-1"><strong>Stay:</strong> {{ $booking->check_in->format('M d, Y') }} - {{ $booking->check_out->format('M d, Y') }}</p>
                     <p class="mb-1"><strong>Stay Type:</strong> Nightly</p>
                     <hr class="my-2">
-                    <p class="mb-1"><strong>Nightly rate:</strong> &#8369;{{ number_format($unitRate, 2) }}</p>
+                    <p class="mb-1"><strong>Room nightly rate:</strong> &#8369;{{ number_format($roomNightlyRate, 2) }}</p>
                     <p class="mb-1"><strong>Nights:</strong> {{ $billedUnits }}</p>
-                    <p class="mb-1"><strong>Calculation:</strong> &#8369;{{ number_format($unitRate, 2) }} x {{ $billedUnits }} night{{ $billedUnits === 1 ? '' : 's' }}</p>
+                    <p class="mb-1"><strong>Room subtotal:</strong> &#8369;{{ number_format($roomSubtotal, 2) }}</p>
+                    @if($extraBeddingCount > 0)
+                        <p class="mb-1"><strong>Extra bedding:</strong> {{ $extraBeddingCount }} x &#8369;{{ number_format($extraBeddingFeePerNight, 2) }} x {{ $billedUnits }} night{{ $billedUnits === 1 ? '' : 's' }}</p>
+                        <p class="mb-1"><strong>Extra bedding total:</strong> &#8369;{{ number_format($extraBeddingTotal, 2) }}</p>
+                    @endif
                     <p class="mb-0"><strong>Amount due:</strong> &#8369;{{ number_format($subtotalAmount, 2) }}</p>
                 </div>
 
@@ -141,4 +150,3 @@
         })();
     </script>
 @endpush
-

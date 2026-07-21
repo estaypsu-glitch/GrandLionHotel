@@ -9,6 +9,7 @@ use App\Mail\BookingPaidMail;
 use App\Models\Booking;
 use App\Models\Payment;
 use App\Models\Staff;
+use App\Services\RefundRequestService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Mail\Mailable;
@@ -18,6 +19,11 @@ use Throwable;
 
 class BookingController extends Controller
 {
+    public function __construct(
+        private readonly RefundRequestService $refundRequestService
+    ) {
+    }
+
     public function index(Request $request)
     {
         $statusFilter = trim($request->string('status')->toString());
@@ -76,7 +82,7 @@ class BookingController extends Controller
 
     public function show(Booking $booking)
     {
-        $booking->load(['user', 'room', 'payment.verifiedByStaff', 'guestDetail', 'assignedStaff']);
+        $booking->load(['user', 'room', 'payment', 'guestDetail', 'assignedStaff']);
         $this->ensurePaidTransactionReference($booking);
         $staffMembers = Staff::query()
             ->orderBy('name')
@@ -159,7 +165,7 @@ class BookingController extends Controller
 
         $booking->update($updatePayload);
         if ($newStatus === 'cancelled' && $booking->payment_status === 'paid') {
-            $booking->payment()->updateOrCreate(
+            $payment = $booking->payment()->updateOrCreate(
                 ['booking_id' => $booking->id],
                 [
                     'amount' => (float) ($booking->payment?->amount ?? $booking->total_price),
@@ -167,6 +173,11 @@ class BookingController extends Controller
                     'status' => 'refund_pending',
                 ]
             );
+
+            $this->refundRequestService->createPendingForCancellation($booking, $payment, [
+                'reason' => 'Admin cancelled the booking and marked the payment for refund processing.',
+                'notes' => 'Refund request was created automatically from the admin booking status flow.',
+            ]);
         }
 
         $booking->loadMissing(['user', 'room', 'payment', 'guestDetail', 'assignedStaff']);
@@ -204,11 +215,10 @@ class BookingController extends Controller
             'source' => 'online_verified',
             'paid_at' => now(),
             'verified_at' => now(),
-            'staff_id' => null,
         ]);
         $payment->ensureTransactionReference((int) $booking->id);
 
-        $booking->refresh()->load(['user', 'room', 'payment.verifiedByStaff', 'guestDetail', 'assignedStaff']);
+        $booking->refresh()->load(['user', 'room', 'payment', 'guestDetail', 'assignedStaff']);
 
         $this->sendBookingMail($booking, new BookingPaidMail($booking));
 
@@ -238,7 +248,6 @@ class BookingController extends Controller
             'source' => 'online_rejected',
             'paid_at' => null,
             'verified_at' => now(),
-            'staff_id' => null,
             'transaction_reference' => null,
         ]);
 

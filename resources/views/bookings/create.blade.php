@@ -108,12 +108,13 @@
         $defaultFirstName = $nameParts[0] ?? '';
         $defaultLastName = $nameParts[1] ?? '';
         $provinces = config('philippines.provinces', []);
+        $standardGuests = \App\Models\Room::standardGuestCapacity();
 
         $prefill = $prefill ?? [
             'check_in' => now()->toDateString(),
             'check_out' => now()->addDay()->toDateString(),
-            'guests' => 1,
-            'adults' => 1,
+            'guests' => $standardGuests,
+            'adults' => $standardGuests,
             'kids' => 0,
             'minimum_check_in' => now()->toDateString(),
             'minimum_check_out' => now()->addDay()->toDateString(),
@@ -122,12 +123,13 @@
             'unavailable_for_selected_dates' => false,
             'availability_message' => null,
         ];
+        $pricingPreview = $pricingPreview ?? null;
 
         $initialCheckIn = old('check_in', $prefill['check_in']);
         $initialCheckOut = old('check_out', $prefill['check_out']);
-        $initialGuests = max(1, (int) old('guests', $prefill['guests']));
-        $initialAdults = max(1, (int) old('adults', $prefill['adults']));
-        $initialKids = max(0, (int) old('kids', $prefill['kids']));
+        $initialGuests = $standardGuests;
+        $initialAdults = $standardGuests;
+        $initialKids = 0;
 
         $minimumCheckIn = $prefill['minimum_check_in'];
         $minimumCheckOut = $prefill['minimum_check_out'];
@@ -138,6 +140,26 @@
                 $minimumCheckOut = $prefill['minimum_check_out'];
             }
         }
+
+        $initialSummaryStay = '--';
+        if ($pricingPreview) {
+            $initialSummaryStay = \Carbon\Carbon::parse($pricingPreview['check_in'])->format('M d, Y')
+                .' - '
+                .\Carbon\Carbon::parse($pricingPreview['check_out'])->format('M d, Y');
+        }
+
+        $initialSummaryUnits = $pricingPreview
+            ? $pricingPreview['nights'].' night'.($pricingPreview['nights'] === 1 ? '' : 's')
+            : '--';
+        $initialSummaryRate = $pricingPreview
+            ? 'PHP '.number_format($pricingPreview['average_nightly_rate'], 2).' / night'
+            : 'PHP '.number_format((float) $room->price_per_night, 2).' / night';
+        $initialSummaryDiscount = $pricingPreview && $pricingPreview['has_date_discount']
+            ? 'Date discount on '.$pricingPreview['discounted_nights'].' night'.($pricingPreview['discounted_nights'] === 1 ? '' : 's')
+            : 'None selected';
+        $initialSummaryAvailability = $prefill['date_selection_valid']
+            ? ($prefill['unavailable_for_selected_dates'] ? 'Unavailable for selected dates' : 'Available for selected dates')
+            : 'Checking selected dates...';
     @endphp
 
     <div class="row g-4">
@@ -151,20 +173,40 @@
                         @if(filled($room->view_type))
                             &middot; {{ $room->view_type }}
                         @endif
-                        &middot; Up to {{ $room->capacity }} guests
+                        &middot; Standard occupancy: {{ $standardGuests }} guests
                     </p>
-                    <div class="price-tag booking-summary-price">&#8369;{{ number_format($room->price_per_night, 2) }}</div>
-                    <small class="text-secondary">per night</small>
+                    <div class="price-tag booking-summary-price" id="summary_headline_rate">
+                        &#8369;{{ number_format($pricingPreview['average_nightly_rate'] ?? $room->price_per_night, 2) }}
+                    </div>
+                    <small class="text-secondary d-block" id="summary_price_caption">
+                        {{ $pricingPreview ? 'selected-stay average / night' : 'per night' }}
+                    </small>
+                    <p class="small mt-1 mb-0 {{ $pricingPreview && $pricingPreview['has_date_discount'] ? '' : 'd-none' }}" id="summary_base_rate_wrap">
+                        <span class="text-secondary text-decoration-line-through" id="summary_base_rate">
+                            &#8369;{{ number_format($room->price_per_night, 2) }}
+                        </span>
+                        <span class="text-success ms-2" id="summary_savings_note">
+                            @if($pricingPreview && $pricingPreview['has_date_discount'])
+                                Date discount saves &#8369;{{ number_format($pricingPreview['discount_amount'], 2) }}
+                            @endif
+                        </span>
+                    </p>
 
                     <div class="booking-estimate">
                         <p class="ta-eyebrow mb-2">Live Estimate</p>
-                        <div class="booking-estimate-row"><span>Stay</span><strong id="summary_stay">--</strong></div>
-                        <div class="booking-estimate-row"><span id="summary_units_label">Nights</span><strong id="summary_units">--</strong></div>
-                        <div class="booking-estimate-row"><span>Rate</span><strong id="summary_rate">--</strong></div>
-                        <div class="booking-estimate-row"><span>Guests</span><strong id="summary_guests">{{ $initialGuests }}</strong></div>
-                        <div class="booking-estimate-row"><span>Discount</span><strong id="summary_discount">None selected</strong></div>
-                        <div class="booking-estimate-row booking-estimate-total mb-0"><span>Estimated total</span><strong id="summary_total">&#8369;{{ number_format($room->price_per_night, 2) }}</strong></div>
-                        <small class="text-secondary d-block mt-2">Estimate only. Final amount is based on nights and selected discounts.</small>
+                        <div class="booking-estimate-row"><span>Stay</span><strong id="summary_stay">{{ $initialSummaryStay }}</strong></div>
+                        <div class="booking-estimate-row"><span id="summary_units_label">Nights</span><strong id="summary_units">{{ $initialSummaryUnits }}</strong></div>
+                        <div class="booking-estimate-row"><span>Rate</span><strong id="summary_rate">{{ $initialSummaryRate }}</strong></div>
+                        <div class="booking-estimate-row"><span>Standard occupancy</span><strong id="summary_guests">{{ $initialGuests }} guests</strong></div>
+                        <div class="booking-estimate-row"><span>Date discount</span><strong id="summary_discount">{{ $initialSummaryDiscount }}</strong></div>
+                        <div class="booking-estimate-row"><span>Availability</span><strong id="summary_availability">{{ $initialSummaryAvailability }}</strong></div>
+                        <div class="booking-estimate-row booking-estimate-total mb-0">
+                            <span>Estimated total</span>
+                            <strong id="summary_total">&#8369;{{ number_format($pricingPreview['total'] ?? $room->price_per_night, 2) }}</strong>
+                        </div>
+                        <small class="text-secondary d-block mt-2">
+                            Estimate includes saved date discounts. PWD/Senior discounts remain subject to staff verification.
+                        </small>
                     </div>
                 </div>
             </aside>
@@ -190,10 +232,20 @@
 
                 <div id="booking_ajax_feedback" class="alert alert-danger booking-page-alert d-none" role="alert" tabindex="-1" aria-live="assertive"></div>
 
-                <form id="booking_form" method="POST" action="{{ route('bookings.store') }}" class="row g-3" enctype="multipart/form-data" data-nightly-rate="{{ number_format((float) $room->price_per_night, 2, '.', '') }}">
+                <form
+                    id="booking_form"
+                    method="POST"
+                    action="{{ route('bookings.store') }}"
+                    class="row g-3"
+                    enctype="multipart/form-data"
+                    data-base-nightly-rate="{{ number_format((float) $room->price_per_night, 2, '.', '') }}"
+                    data-preview-url="{{ route('rooms.pricing-preview', $room) }}"
+                >
                     @csrf
                     <input type="hidden" name="room_id" value="{{ $room->id }}">
                     <input type="hidden" id="guests_input" name="guests" value="{{ $initialGuests }}">
+                    <input type="hidden" id="adults_input" name="adults" value="{{ $initialAdults }}">
+                    <input type="hidden" id="kids_input" name="kids" value="{{ $initialKids }}">
 
                     <div class="col-12 pt-1">
                         <h2 class="h5 mb-1">Guest Information</h2>
@@ -267,18 +319,14 @@
                     <div class="col-12" id="nightly_time_policy_note">
                     </div>
                     <div class="col-12 pt-2">
-                        <h2 class="h5 mb-1">Guests and Payment</h2>
-                        <p class="small text-secondary mb-0">Split guest count and choose a preferred payment method.</p>
+                        <h2 class="h5 mb-1">Payment and Requests</h2>
+                        <p class="small text-secondary mb-0">All rooms follow a standard {{ $standardGuests }}-guest setup. Extra bedding requests can be reviewed by staff.</p>
                     </div>
 
-                    <div class="col-md-6">
-                        <label class="form-label">Number of adults</label>
-                        <input type="number" class="form-control" id="adults_input" name="adults" min="1" max="{{ $room->capacity }}" required value="{{ $initialAdults }}">
-                    </div>
-
-                    <div class="col-md-6">
-                        <label class="form-label">Number of kids (if there are any)</label>
-                        <input type="number" class="form-control" id="kids_input" name="kids" min="0" max="{{ $room->capacity }}" value="{{ $initialKids }}">
+                    <div class="col-12">
+                        <div class="alert alert-light border mb-0 small">
+                            Standard room setup is for <strong>{{ $standardGuests }} guests</strong>. If you need extra bedding, include it below and staff will confirm availability.
+                        </div>
                     </div>
 
                     <div class="col-md-4">
@@ -311,13 +359,9 @@
                         <small class="text-secondary">Required for PWD/Senior discount.</small>
                     </div>
 
-                    <div class="col-12 d-flex align-items-end">
-                        <small id="guest_capacity_note" class="text-secondary">Total guests: <strong id="guest_total">{{ $initialGuests }}</strong> / {{ $room->capacity }}</small>
-                    </div>
-
                     <div class="col-12">
                         <label class="form-label">Special request (optional)</label>
-                        <textarea class="form-control" name="notes" rows="3" maxlength="500" placeholder="Add any special request for your stay">{{ old('notes') }}</textarea>
+                        <textarea class="form-control" name="notes" rows="3" maxlength="500" placeholder="Add any special request for your stay, including extra bedding if needed">{{ old('notes') }}</textarea>
                     </div>
 
                     <div class="col-12">
@@ -340,11 +384,9 @@
     <script>
         (() => {
             const form = document.getElementById('booking_form');
+            const guestsInput = document.getElementById('guests_input');
             const adultsInput = document.getElementById('adults_input');
             const kidsInput = document.getElementById('kids_input');
-            const guestsInput = document.getElementById('guests_input');
-            const guestTotal = document.getElementById('guest_total');
-            const guestCapacityNote = document.getElementById('guest_capacity_note');
             const checkInInput = document.getElementById('check_in_input');
             const checkOutInput = document.getElementById('check_out_input');
             const ajaxFeedback = document.getElementById('booking_ajax_feedback');
@@ -352,20 +394,35 @@
             const discountTypeSelect = document.getElementById('discount_type_select');
             const discountIdInput = document.getElementById('discount_id_input');
             const discountIdPhotoInput = document.getElementById('discount_id_photo_input');
-            const roomCapacity = {{ (int) $room->capacity }};
-            const nightlyRate = Number.parseFloat(form?.dataset.nightlyRate || '0') || 0;
+            const standardGuests = {{ $standardGuests }};
+            const baseNightlyRate = Number.parseFloat(form?.dataset.baseNightlyRate || '0') || 0;
+            const submitButton = form?.querySelector('button[type="submit"]');
+            const defaultSubmitText = submitButton?.textContent?.trim() || 'Submit booking request';
+            let currentPricing = @json($pricingPreview);
+            let currentAvailability = null;
 
-            if (!form || !adultsInput || !kidsInput || !guestsInput || !guestTotal || !checkInInput || !checkOutInput) {
+            if (!form || !guestsInput || !adultsInput || !kidsInput || !checkInInput || !checkOutInput) {
                 return;
             }
 
+            const summaryHeadlineRate = document.getElementById('summary_headline_rate');
+            const summaryPriceCaption = document.getElementById('summary_price_caption');
+            const summaryBaseRateWrap = document.getElementById('summary_base_rate_wrap');
+            const summaryBaseRate = document.getElementById('summary_base_rate');
+            const summarySavingsNote = document.getElementById('summary_savings_note');
             const summaryStay = document.getElementById('summary_stay');
             const summaryUnitsLabel = document.getElementById('summary_units_label');
             const summaryUnits = document.getElementById('summary_units');
             const summaryRate = document.getElementById('summary_rate');
             const summaryGuests = document.getElementById('summary_guests');
             const summaryDiscount = document.getElementById('summary_discount');
+            const summaryAvailability = document.getElementById('summary_availability');
             const summaryTotal = document.getElementById('summary_total');
+            const dateFormatter = new Intl.DateTimeFormat('en-PH', {
+                month: 'short',
+                day: '2-digit',
+                year: 'numeric',
+            });
 
             const formatCurrency = (value) => new Intl.NumberFormat('en-PH', {
                 style: 'currency',
@@ -437,43 +494,62 @@
                 }
             };
 
-            const updateGuestCount = () => {
-                let adults = Math.max(1, Number.parseInt(adultsInput.value || '1', 10) || 1);
-                let kids = Math.max(0, Number.parseInt(kidsInput.value || '0', 10) || 0);
+            const syncStandardGuests = () => {
+                adultsInput.value = String(standardGuests);
+                kidsInput.value = '0';
+                guestsInput.value = String(standardGuests);
 
-                if (adults > roomCapacity) {
-                    adults = roomCapacity;
-                }
-
-                let total = adults + kids;
-                if (total > roomCapacity) {
-                    kids = Math.max(0, roomCapacity - adults);
-                    total = adults + kids;
-                }
-
-                adultsInput.value = adults;
-                kidsInput.value = kids;
-
-                guestsInput.value = total;
-                guestTotal.textContent = total;
-                summaryGuests.textContent = `${total} guest${total === 1 ? '' : 's'}`;
-
-                if (guestCapacityNote) {
-                    guestCapacityNote.classList.toggle('text-danger', total >= roomCapacity);
-                    guestCapacityNote.classList.toggle('text-secondary', total < roomCapacity);
+                if (summaryGuests) {
+                    summaryGuests.textContent = `${standardGuests} guests`;
                 }
             };
 
-            const updateEstimate = () => {
+            const updateAvailabilityState = (availability, fallbackMessage = 'Select valid dates to preview.') => {
+                currentAvailability = availability;
+
+                if (summaryAvailability) {
+                    summaryAvailability.textContent = availability?.message || fallbackMessage;
+                }
+
+                if (submitButton) {
+                    const canSubmit = availability?.stay_available ?? false;
+                    submitButton.disabled = !canSubmit;
+                    submitButton.textContent = canSubmit ? defaultSubmitText : 'Select available stay dates';
+                }
+            };
+
+            const updateSummaryDiscountText = () => {
+                if (!summaryDiscount) {
+                    return;
+                }
+
+                const segments = [];
+                if (currentPricing?.has_date_discount) {
+                    segments.push(
+                        `Date discount on ${currentPricing.discounted_nights} night${currentPricing.discounted_nights === 1 ? '' : 's'}`
+                    );
+                }
+
+                const requiresId = discountTypeSelect
+                    && (discountTypeSelect.value === 'pwd' || discountTypeSelect.value === 'senior');
+
+                if (requiresId) {
+                    segments.push(`${discountTypeSelect.value.toUpperCase()} selected (subject to verification)`);
+                }
+
+                summaryDiscount.textContent = segments.length > 0 ? segments.join(' + ') : 'None selected';
+            };
+
+            const renderPricingSummary = (pricing = null, availability = null) => {
                 const checkInDate = parseDate(checkInInput.value);
                 const checkOutDate = parseDate(checkOutInput.value);
                 const nights = nightsBetween(checkInInput.value, checkOutInput.value);
-                const total = nights > 0 ? nights * nightlyRate : 0;
+                const rate = pricing?.average_nightly_rate ?? baseNightlyRate;
+                const total = pricing?.total ?? (nights > 0 ? nights * baseNightlyRate : 0);
 
                 if (summaryStay) {
                     if (checkInDate && checkOutDate) {
-                        const formatter = new Intl.DateTimeFormat('en-PH', { month: 'short', day: '2-digit', year: 'numeric' });
-                        summaryStay.textContent = `${formatter.format(checkInDate)} - ${formatter.format(checkOutDate)}`;
+                        summaryStay.textContent = `${dateFormatter.format(checkInDate)} - ${dateFormatter.format(checkOutDate)}`;
                     } else {
                         summaryStay.textContent = '--';
                     }
@@ -484,15 +560,98 @@
                 }
 
                 if (summaryRate) {
-                    summaryRate.textContent = nightlyRate > 0 ? `${formatCurrency(nightlyRate)} / night` : '--';
+                    summaryRate.textContent = rate > 0 ? `${formatCurrency(rate)} / night` : '--';
                 }
 
                 if (summaryUnitsLabel) {
                     summaryUnitsLabel.textContent = 'Nights';
                 }
 
+                if (summaryHeadlineRate) {
+                    summaryHeadlineRate.textContent = formatCurrency(rate);
+                }
+
+                if (summaryPriceCaption) {
+                    summaryPriceCaption.textContent = pricing ? 'selected-stay average / night' : 'per night';
+                }
+
+                if (summaryBaseRate) {
+                    summaryBaseRate.textContent = formatCurrency(baseNightlyRate);
+                }
+
+                if (summaryBaseRateWrap) {
+                    summaryBaseRateWrap.classList.toggle('d-none', !pricing?.has_date_discount);
+                }
+
+                if (summarySavingsNote) {
+                    summarySavingsNote.textContent = pricing?.has_date_discount
+                        ? `Date discount saves ${formatCurrency(pricing.discount_amount)}`
+                        : '';
+                }
+
                 if (summaryTotal) {
                     summaryTotal.textContent = formatCurrency(total);
+                }
+
+                updateSummaryDiscountText();
+                updateAvailabilityState(availability, nights > 0
+                    ? 'Checking selected dates...'
+                    : 'Select valid dates to preview.');
+            };
+
+            const refreshPricingPreview = async () => {
+                const checkInDate = parseDate(checkInInput.value);
+                const checkOutDate = parseDate(checkOutInput.value);
+
+                if (!checkInDate || !checkOutDate || checkOutDate <= checkInDate) {
+                    currentPricing = null;
+                    renderPricingSummary(null, null);
+                    return;
+                }
+
+                try {
+                    const previewUrl = new URL(form.dataset.previewUrl, window.location.origin);
+                    previewUrl.searchParams.set('check_in', checkInInput.value);
+                    previewUrl.searchParams.set('check_out', checkOutInput.value);
+
+                    const response = await fetch(previewUrl, {
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                    });
+                    const payload = await response.json().catch(() => null);
+
+                    if (!response.ok || !payload?.pricing) {
+                        currentPricing = null;
+                        renderPricingSummary(null, null);
+
+                        if (summaryAvailability) {
+                            summaryAvailability.textContent = payload?.message || 'Unable to load pricing right now.';
+                        }
+
+                        if (submitButton) {
+                            submitButton.disabled = true;
+                            submitButton.textContent = 'Select available stay dates';
+                        }
+
+                        return;
+                    }
+
+                    currentPricing = payload.pricing;
+                    renderPricingSummary(payload.pricing, payload.availability);
+                } catch (error) {
+                    currentPricing = null;
+                    renderPricingSummary(null, null);
+
+                    if (summaryAvailability) {
+                        summaryAvailability.textContent = 'Unable to load pricing right now.';
+                    }
+
+                    if (submitButton) {
+                        submitButton.disabled = true;
+                        submitButton.textContent = 'Select available stay dates';
+                    }
                 }
             };
 
@@ -574,43 +733,32 @@
                     discountIdPhotoInput.disabled = !requiresId;
                 }
 
-                if (summaryDiscount) {
-                    summaryDiscount.textContent = requiresId
-                        ? `${discountTypeSelect.value.toUpperCase()} selected (subject to verification)`
-                        : 'None selected';
-                }
-
                 if (!requiresId) {
                     discountIdInput.value = '';
                     if (discountIdPhotoInput) {
                         discountIdPhotoInput.value = '';
                     }
                 }
+
+                updateSummaryDiscountText();
             };
 
             const syncAll = () => {
                 updateDateRules();
-                updateGuestCount();
-                updateEstimate();
+                syncStandardGuests();
+                renderPricingSummary(currentPricing, currentAvailability);
                 updateDiscountState();
             };
 
-            adultsInput.addEventListener('input', () => {
-                updateGuestCount();
-                updateEstimate();
-            });
-            kidsInput.addEventListener('input', () => {
-                updateGuestCount();
-                updateEstimate();
-            });
             checkInInput.addEventListener('change', () => {
                 updateDateRules();
-                updateEstimate();
+                refreshPricingPreview();
             });
-            checkOutInput.addEventListener('change', updateEstimate);
+            checkOutInput.addEventListener('change', refreshPricingPreview);
             discountTypeSelect?.addEventListener('change', updateDiscountState);
 
             syncAll();
+            refreshPricingPreview();
 
             if (prefillFeedback && prefillFeedback.classList.contains('alert-warning')) {
                 prefillFeedback.classList.add('is-visible');
@@ -619,12 +767,17 @@
             form.addEventListener('submit', async (event) => {
                 event.preventDefault();
 
+                await refreshPricingPreview();
                 syncAll();
                 clearFormErrors();
                 clearAlert();
 
-                const submitButton = form.querySelector('button[type="submit"]');
-                const originalButtonText = submitButton ? submitButton.textContent : '';
+                if (!currentAvailability?.stay_available) {
+                    showAlert(currentAvailability?.message || 'Select available stay dates before submitting your booking.');
+                    return;
+                }
+
+                const originalButtonText = submitButton ? submitButton.textContent : defaultSubmitText;
 
                 if (submitButton) {
                     submitButton.disabled = true;

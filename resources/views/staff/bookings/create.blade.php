@@ -61,6 +61,10 @@
 @endpush
 
 @section('content')
+    @php
+        $standardGuests = \App\Models\Room::standardGuestCapacity();
+        $extraBeddingFeePerNight = (float) config('pricing.extra_bedding_fee_per_night', 0);
+    @endphp
     <section class="mb-4">
         <h1 class="h4 mb-1">New Walk-in Booking</h1>
         <p class="text-secondary mb-0">Create a front-desk booking from the bookings board.</p>
@@ -107,8 +111,8 @@
                                 <select name="room_id" id="walkin_room_id" class="form-select @error('room_id') is-invalid @enderror" required>
                                     <option value="">Select room...</option>
                                     @foreach($rooms as $room)
-                                        <option value="{{ $room->id }}" data-capacity="{{ $room->capacity }}" data-nightly-price="{{ $room->price_per_night }}" @selected(old('room_id') == $room->id)>
-                                            {{ $room->name }} ({{ $room->type ?? 'Room' }}{{ filled($room->view_type) ? ', '.$room->view_type : '' }} - {{ $room->capacity }} guests)
+                                        <option value="{{ $room->id }}" data-nightly-price="{{ $room->price_per_night }}" data-preview-url="{{ route('rooms.pricing-preview', $room) }}" @selected(old('room_id') == $room->id)>
+                                            {{ $room->name }} ({{ $room->type ?? 'Room' }}{{ filled($room->view_type) ? ', '.$room->view_type : '' }} - standard {{ $standardGuests }} guests)
                                         </option>
                                     @endforeach
                                 </select>
@@ -137,10 +141,11 @@
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label fw-semibold">Guests <span class="text-danger">*</span></label>
-                                <input type="number" id="walkin_guests" name="guests" class="form-control @error('guests') is-invalid @enderror" value="{{ old('guests', 1) }}" min="1" required>
+                                <input type="number" id="walkin_guests" name="guests" class="form-control @error('guests') is-invalid @enderror" value="{{ old('guests', $standardGuests) }}" min="1" required>
                                 @error('guests')
                                     <div class="invalid-feedback">{{ $message }}</div>
                                 @enderror
+                                <small class="text-secondary d-block mt-1">Standard setup is for {{ $standardGuests }} guests. Guests beyond {{ $standardGuests }} require extra bedding approval.</small>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label fw-semibold">Payment Preference</label>
@@ -150,6 +155,17 @@
                                     <option value="instapay" @selected(old('payment_preference') == 'instapay')>InstaPay</option>
                                     <option value="credit_debit_card" @selected(old('payment_preference') == 'credit_debit_card')>Credit/Debit Card</option>
                                 </select>
+                            </div>
+                            <div class="col-12">
+                                <div class="form-check">
+                                    <input class="form-check-input @error('extra_bedding_confirmed') is-invalid @enderror" type="checkbox" value="1" id="walkin_extra_bedding_confirmed" name="extra_bedding_confirmed" @checked(old('extra_bedding_confirmed'))>
+                                    <label class="form-check-label" for="walkin_extra_bedding_confirmed">
+                                        Confirm extra bedding approval when the booking exceeds {{ $standardGuests }} guests.
+                                    </label>
+                                </div>
+                                @error('extra_bedding_confirmed')
+                                    <div class="invalid-feedback d-block">{{ $message }}</div>
+                                @enderror
                             </div>
                         </div>
                     </div>
@@ -177,8 +193,16 @@
                         <span class="walkin-summary-value" id="summary_room">-</span>
                     </div>
                     <div class="walkin-summary-line">
-                        <span class="walkin-summary-label">Guest Capacity</span>
+                        <span class="walkin-summary-label">Standard Occupancy</span>
                         <span class="walkin-summary-value" id="summary_capacity">-</span>
+                    </div>
+                    <div class="walkin-summary-line">
+                        <span class="walkin-summary-label">Guest Count</span>
+                        <span class="walkin-summary-value" id="summary_guests">-</span>
+                    </div>
+                    <div class="walkin-summary-line">
+                        <span class="walkin-summary-label">Extra Bedding</span>
+                        <span class="walkin-summary-value" id="summary_extra_bedding">-</span>
                     </div>
                     <div class="walkin-summary-line">
                         <span class="walkin-summary-label" id="summary_rate_label">Nightly Rate</span>
@@ -192,7 +216,7 @@
                         <span class="walkin-summary-label">Estimated Total</span>
                         <span class="walkin-summary-value" id="summary_total">-</span>
                     </div>
-                    <p class="walkin-note mt-3">Estimate only. Final amount is based on nightly rate and number of nights.</p>
+                    <p class="walkin-note mt-3" id="summary_note">Estimate only. Final amount is based on stay dates, room rate, discounts, and approved extra bedding.</p>
                 </aside>
             </div>
         </div>
@@ -203,19 +227,25 @@
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const roomSelect = document.getElementById('walkin_room_id');
-        const guestsInput = document.getElementById('walkin_guests');
         const checkInInput = document.getElementById('walkin_check_in');
         const checkOutInput = document.getElementById('walkin_check_out');
+        const guestsInput = document.getElementById('walkin_guests');
+        const standardGuests = {{ $standardGuests }};
+        const extraBeddingFeePerNight = {{ number_format($extraBeddingFeePerNight, 2, '.', '') }};
 
         const summaryRoom = document.getElementById('summary_room');
         const summaryCapacity = document.getElementById('summary_capacity');
+        const summaryGuests = document.getElementById('summary_guests');
+        const summaryExtraBedding = document.getElementById('summary_extra_bedding');
         const summaryRateLabel = document.getElementById('summary_rate_label');
         const summaryUnitsLabel = document.getElementById('summary_units_label');
         const summaryRate = document.getElementById('summary_rate');
         const summaryUnits = document.getElementById('summary_units');
         const summaryTotal = document.getElementById('summary_total');
+        const summaryNote = document.getElementById('summary_note');
+        let activePreviewToken = 0;
 
-        if (!roomSelect || !guestsInput || !checkInInput || !checkOutInput) {
+        if (!roomSelect || !checkInInput || !checkOutInput || !guestsInput) {
             return;
         }
 
@@ -248,31 +278,34 @@
             return Math.max(0, diff);
         };
 
-        const syncGuestCapacity = () => {
-            const selectedOption = roomSelect.options[roomSelect.selectedIndex];
-            const capacity = selectedOption ? selectedOption.dataset.capacity : '';
+        const buildFallbackEstimate = (nightlyRate, nights, guestCount) => {
+            const extraBeddingCount = Math.max(0, guestCount - standardGuests);
+            const extraBeddingTotal = extraBeddingCount * extraBeddingFeePerNight * nights;
 
-            if (capacity) {
-                guestsInput.max = capacity;
-                if (parseInt(guestsInput.value, 10) > parseInt(capacity, 10)) {
-                    guestsInput.value = capacity;
-                }
-                return;
-            }
-
-            guestsInput.removeAttribute('max');
+            return {
+                average_nightly_rate: nights > 0 ? ((nightlyRate * nights) + extraBeddingTotal) / nights : nightlyRate,
+                extra_bedding_count: extraBeddingCount,
+                extra_bedding_fee_per_night: extraBeddingFeePerNight,
+                extra_bedding_total: extraBeddingTotal,
+                total: nights > 0 ? (nightlyRate * nights) + extraBeddingTotal : 0,
+                has_date_discount: false,
+            };
         };
 
-        const updateSummary = () => {
+        const renderSummary = (pricing) => {
             const selectedOption = roomSelect.options[roomSelect.selectedIndex];
             const roomLabel = selectedOption && selectedOption.value !== '' ? selectedOption.textContent.trim() : '-';
-            const capacity = selectedOption && selectedOption.dataset.capacity ? selectedOption.dataset.capacity : '-';
-            const nightlyRate = selectedOption && selectedOption.dataset.nightlyPrice ? Number(selectedOption.dataset.nightlyPrice) : 0;
             const nights = calculateNights();
-            const estimatedTotal = nights > 0 ? nights * nightlyRate : 0;
+            const guestCount = Math.max(1, Number(guestsInput.value || standardGuests));
+            const extraBeddingCount = Math.max(0, Number(pricing?.extra_bedding_count || 0));
+            const extraBeddingTotal = Number(pricing?.extra_bedding_total || 0);
+            const averageNightlyRate = Number(pricing?.average_nightly_rate || 0);
+            const estimatedTotal = Number(pricing?.total || 0);
 
             if (summaryRateLabel) {
-                summaryRateLabel.textContent = 'Nightly Rate';
+                summaryRateLabel.textContent = pricing?.has_date_discount || extraBeddingCount > 0
+                    ? 'Average / Night'
+                    : 'Nightly Rate';
             }
             if (summaryUnitsLabel) {
                 summaryUnitsLabel.textContent = 'Stay Nights';
@@ -281,10 +314,18 @@
                 summaryRoom.textContent = roomLabel;
             }
             if (summaryCapacity) {
-                summaryCapacity.textContent = capacity === '-' ? '-' : `${capacity} guests`;
+                summaryCapacity.textContent = `${standardGuests} guests`;
+            }
+            if (summaryGuests) {
+                summaryGuests.textContent = `${guestCount} guest${guestCount === 1 ? '' : 's'}`;
+            }
+            if (summaryExtraBedding) {
+                summaryExtraBedding.textContent = extraBeddingCount > 0
+                    ? `${extraBeddingCount} x ${formatMoney(extraBeddingFeePerNight)} / night`
+                    : 'None';
             }
             if (summaryRate) {
-                summaryRate.textContent = nightlyRate > 0 ? formatMoney(nightlyRate) : '-';
+                summaryRate.textContent = averageNightlyRate > 0 ? formatMoney(averageNightlyRate) : '-';
             }
             if (summaryUnits) {
                 summaryUnits.textContent = nights > 0 ? `${nights} night${nights === 1 ? '' : 's'}` : '-';
@@ -292,12 +333,64 @@
             if (summaryTotal) {
                 summaryTotal.textContent = estimatedTotal > 0 ? formatMoney(estimatedTotal) : '-';
             }
+            if (summaryNote) {
+                if (extraBeddingCount > 0 && extraBeddingTotal > 0) {
+                    summaryNote.textContent = `Estimate includes ${formatMoney(extraBeddingTotal)} for approved extra bedding across the selected stay.`;
+                } else if (pricing?.has_date_discount) {
+                    summaryNote.textContent = 'Estimate already includes the selected stay date discounts.';
+                } else {
+                    summaryNote.textContent = 'Estimate only. Final amount is based on stay dates, room rate, discounts, and approved extra bedding.';
+                }
+            }
+        };
+
+        const updateSummary = async () => {
+            const selectedOption = roomSelect.options[roomSelect.selectedIndex];
+            const nightlyRate = selectedOption && selectedOption.dataset.nightlyPrice ? Number(selectedOption.dataset.nightlyPrice) : 0;
+            const previewUrl = selectedOption?.dataset.previewUrl || '';
+            const nights = calculateNights();
+            const guestCount = Math.max(1, Number(guestsInput.value || standardGuests));
+            const fallbackPricing = buildFallbackEstimate(nightlyRate, nights, guestCount);
+
+            if (!selectedOption || !selectedOption.value || !previewUrl || nights <= 0) {
+                renderSummary(fallbackPricing);
+                return;
+            }
+
+            const previewToken = ++activePreviewToken;
+
+            try {
+                const previewResponse = await fetch(`${previewUrl}?check_in=${encodeURIComponent(checkInInput.value)}&check_out=${encodeURIComponent(checkOutInput.value)}&guests=${encodeURIComponent(guestCount)}`, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                });
+                const payload = await previewResponse.json().catch(() => null);
+
+                if (previewToken !== activePreviewToken) {
+                    return;
+                }
+
+                if (!previewResponse.ok || !payload?.pricing) {
+                    renderSummary(fallbackPricing);
+                    return;
+                }
+
+                renderSummary(payload.pricing);
+            } catch (error) {
+                if (previewToken !== activePreviewToken) {
+                    return;
+                }
+
+                renderSummary(fallbackPricing);
+            }
         };
 
         roomSelect.addEventListener('change', () => {
-            syncGuestCapacity();
             updateSummary();
         });
+        guestsInput.addEventListener('input', updateSummary);
 
         checkInInput.addEventListener('change', function() {
             if (!this.value) {
@@ -320,7 +413,6 @@
             checkOutInput.min = addDays(checkInInput.value, 1);
         }
 
-        syncGuestCapacity();
         updateSummary();
     });
 </script>

@@ -90,7 +90,6 @@
         <div>
             <h1 class="h4 mb-0">Booking Management</h1>
         </div>
-        <a href="{{ route('admin.dashboard') }}" class="btn btn-ta-outline">Back to dashboard</a>
     </div>
 
     <div class="row g-3 mb-4">

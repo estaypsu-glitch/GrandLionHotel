@@ -58,6 +58,9 @@
         $paymentProofUrl = $paymentProofPath !== ''
             ? \Illuminate\Support\Facades\Storage::disk('public')->url($paymentProofPath)
             : '';
+        $refundMethodLabel = $booking->payment
+            ? \App\Models\Payment::methodLabel((string) $booking->payment->method)
+            : null;
         $isOnlineAwaitingVerification = $booking->payment_status === 'pending_verification'
             && \App\Models\Payment::isOnlineMethod((string) ($booking->payment?->method ?? ''));
     @endphp
@@ -196,6 +199,9 @@
             <div class="row g-2">
                 <div class="col-md-6"><strong>Method:</strong> {{ \App\Models\Payment::methodLabel($booking->payment->method) }}</div>
                 <div class="col-md-6"><strong>Status:</strong> {{ ucfirst(str_replace('_', ' ', $booking->payment->status)) }}</div>
+                @if($booking->payment_status === 'refund_pending' && $refundMethodLabel)
+                    <div class="col-md-6"><strong>Refund Method:</strong> {{ $refundMethodLabel }}</div>
+                @endif
                 @if(filled($booking->payment->customer_reference))
                     <div class="col-md-6"><strong>Customer Ref No.:</strong> {{ $booking->payment->customer_reference }}</div>
                 @endif
@@ -208,9 +214,13 @@
                 <div class="col-md-6"><strong>Amount:</strong> PHP {{ number_format($booking->payment->amount, 2) }}</div>
                 <div class="col-md-6"><strong>Paid At:</strong> {{ optional($booking->payment->paid_at)->format('M d, Y h:i A') ?? '-' }}</div>
                 <div class="col-md-6"><strong>Verified At:</strong> {{ optional($booking->payment->verified_at)->format('M d, Y h:i A') ?? '-' }}</div>
-                <div class="col-md-6"><strong>Verified By:</strong> {{ $booking->payment->verifiedByStaff->name ?? '-' }}</div>
                 <div class="col-12"><strong>Transaction Ref:</strong> {{ $booking->payment->transaction_reference ?? '-' }}</div>
             </div>
+            @if($booking->payment_status === 'refund_pending' && $refundMethodLabel)
+                <div class="booking-admin-note">
+                    <strong>Refund Rule:</strong> Refund should be returned using the original payment method: {{ $refundMethodLabel }}.
+                </div>
+            @endif
         </section>
     @endif
 @endsection

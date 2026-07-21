@@ -121,7 +121,6 @@ class PaymentController extends Controller
                     'payment_proof_path' => $proofPath,
                     'paid_at' => null,
                     'verified_at' => null,
-                    'staff_id' => null,
                     'transaction_reference' => null,
                     'original_amount' => null,
                     'discount_rate' => null,

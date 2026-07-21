@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Models\Concerns\HasLegacyIdAttribute;
+use App\Models\Concerns\HasEncryptedRouteKey;
+use App\Services\PricingService;
 use Carbon\Carbon;
 use App\Models\Customer;
 use App\Models\Staff;
@@ -10,11 +12,14 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\HasOneThrough;
 use Illuminate\Support\Facades\Schema;
 
 class Booking extends Model
 {
+    use HasEncryptedRouteKey;
     use HasFactory;
     use HasLegacyIdAttribute;
 
@@ -75,6 +80,31 @@ class Booking extends Model
         return $this->hasOne(Payment::class, 'booking_id', 'booking_id');
     }
 
+    public function refundRequests(): HasManyThrough
+    {
+        return $this->hasManyThrough(
+            RefundRequest::class,
+            Payment::class,
+            'booking_id',
+            'payment_id',
+            'booking_id',
+            'payment_id'
+        );
+    }
+
+    public function latestRefundRequest(): HasOneThrough
+    {
+        return $this->hasOneThrough(
+            RefundRequest::class,
+            Payment::class,
+            'booking_id',
+            'payment_id',
+            'booking_id',
+            'payment_id'
+        )
+            ->latestOfMany('refund_request_id');
+    }
+
     public function guestDetail(): HasOne
     {
         return $this->hasOne(BookingGuestDetail::class, 'booking_id', 'booking_id');
@@ -119,6 +149,11 @@ class Booking extends Model
         }
 
         return 1;
+    }
+
+    public function getExtraBeddingCountAttribute(): int
+    {
+        return app(PricingService::class)->calculateExtraBeddingCount($this->guests);
     }
 
     public function getTotalPriceAttribute(mixed $value = null): float
@@ -331,8 +366,12 @@ class Booking extends Model
             'discount_type' => $discount?->discount_type,
             'discount_id' => $discount?->discount_id,
             'discount_id_photo_path' => $discount?->discount_id_photo_path,
-            'staff_id' => $detail->staff_id,
         ], static fn ($value): bool => !is_null($value) && $value !== '');
+    }
+
+    public function pricingQuote(): array
+    {
+        return app(PricingService::class)->quoteBooking($this);
     }
 
     private function guestDetailRecord(): ?BookingGuestDetail
@@ -434,6 +473,15 @@ class Booking extends Model
 
         if (!$room) {
             return 0.0;
+        }
+
+        if ($this->check_in && $this->check_out) {
+            return app(PricingService::class)->calculateTotal(
+                $room,
+                $this->check_in->toDateString(),
+                $this->check_out->toDateString(),
+                $this->guests
+            );
         }
 
         return round((float) $room->price_per_night * $this->billedUnits(), 2);

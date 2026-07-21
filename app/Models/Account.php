@@ -3,12 +3,14 @@
 namespace App\Models;
 
 use App\Models\Concerns\HasLegacyIdAttribute;
+use App\Models\Concerns\HasEncryptedRouteKey;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
 abstract class Account extends Authenticatable
 {
+    use HasEncryptedRouteKey;
     use HasLegacyIdAttribute;
     use HasFactory, Notifiable;
 

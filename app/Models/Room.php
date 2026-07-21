@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\HasLegacyIdAttribute;
+use App\Models\Concerns\HasEncryptedRouteKey;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -11,9 +12,11 @@ use Illuminate\Database\Eloquent\Builder;
 
 class Room extends Model
 {
+    use HasEncryptedRouteKey;
     use HasFactory;
     use HasLegacyIdAttribute;
 
+    public const STANDARD_GUEST_CAPACITY = 2;
     public const BOOKABLE_ROOM_STATUS_SLUGS = ['clean'];
 
     private const FALLBACK_IMAGES = [
@@ -50,6 +53,18 @@ class Room extends Model
             'price_per_night' => 'decimal:2',
             'status_updated_at' => 'datetime',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (Room $room): void {
+            $room->attributes['capacity'] = self::STANDARD_GUEST_CAPACITY;
+        });
+    }
+
+    public static function standardGuestCapacity(): int
+    {
+        return self::STANDARD_GUEST_CAPACITY;
     }
 
     public function bookings(): HasMany

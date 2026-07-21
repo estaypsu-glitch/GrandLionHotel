@@ -30,4 +30,5 @@ class Staff extends Account
     {
         return $this->hasMany(Booking::class, 'staff_id', 'staff_id');
     }
+
 }

@@ -176,7 +176,7 @@
         <div class="d-flex justify-content-end mb-3">
             <div class="home-welcome-note">
                 <span class="home-welcome-dot" aria-hidden="true"></span>
-                Welcome, {{ \Illuminate\Support\Str::limit(session('account_created_name'), 24) }}.
+                Account created successfully. Welcome, {{ \Illuminate\Support\Str::limit(session('account_created_name'), 24) }}.
             </div>
         </div>
     @endif
@@ -221,90 +221,96 @@
         </div>
     </section>
 
-    <section class="soft-card p-3 p-lg-4 mb-5">
-        <p class="ta-eyebrow mb-2">Quick Search</p>
-        <form method="GET" action="{{ route('rooms.search') }}" class="row g-2">
-            <div class="col-md-3 col-xl-3">
-                <input type="text" name="type" class="form-control" placeholder="Room type or view (e.g. Nature View)">
-            </div>
-            <div class="col-6 col-md-2 col-xl-2">
-                <input type="number" name="guests" class="form-control" min="1" placeholder="Guests">
-            </div>
-            <div class="col-6 col-md-2 col-xl-2">
-                <input type="date" name="check_in" class="form-control" min="{{ now()->toDateString() }}" value="{{ now()->toDateString() }}">
-            </div>
-            <div class="col-6 col-md-2 col-xl-2">
-                <input type="date" name="check_out" class="form-control" min="{{ now()->addDay()->toDateString() }}" value="{{ now()->addDay()->toDateString() }}">
-            </div>
-            <div class="col-6 col-md-3 col-xl-3 d-grid">
-                <button class="btn btn-ta" type="submit">Search Rooms</button>
-            </div>
-            <div class="col-12">
-                <div class="form-check mt-1">
-                    <input class="form-check-input" type="checkbox" name="available_only" value="1" id="availableOnlyHome" checked>
-                    <label class="form-check-label text-secondary small" for="availableOnlyHome">Show available rooms only</label>
-                </div>
-            </div>
-        </form>
-    </section>
+    @php
+        $hasSignedInAccess = auth('customer')->check()
+            || auth('admin')->check()
+            || auth('staff')->check();
+    @endphp
 
-    <section class="mb-5">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <div>
-                <p class="ta-eyebrow mb-1">Categories</p>
-                <h2 class="mb-0">Browse by Room Type</h2>
-            </div>
-            <a href="{{ route('rooms.search') }}" class="btn btn-sm btn-ta-outline">Open filters</a>
-        </div>
-        <div class="row g-3">
-            @forelse($roomCategories as $category)
-                <div class="col-6 col-lg-3">
-                    <a
-                        href="{{ route('rooms.search', ['type' => $category->type, 'available_only' => 1]) }}"
-                        class="soft-card result-card p-3 p-lg-4 category-link"
-                    >
-                        <span class="chip mb-2">Category</span>
-                        <h3 class="h5 mb-1">{{ $category->type }}</h3>
-                        <p class="text-secondary small mb-0">{{ $category->total }} room{{ $category->total === 1 ? '' : 's' }} available to explore</p>
-                    </a>
+    @if($hasSignedInAccess)
+        <section class="soft-card p-3 p-lg-4 mb-5">
+            <p class="ta-eyebrow mb-2">Quick Search</p>
+            <form method="GET" action="{{ route('rooms.search') }}" class="row g-2">
+                <div class="col-md-4 col-xl-4">
+                    <input type="text" name="type" class="form-control" placeholder="Room type or view (e.g. Nature View)">
                 </div>
-            @empty
+                <div class="col-6 col-md-2 col-xl-2">
+                    <input type="date" name="check_in" class="form-control" min="{{ now()->toDateString() }}" value="{{ now()->toDateString() }}">
+                </div>
+                <div class="col-6 col-md-2 col-xl-2">
+                    <input type="date" name="check_out" class="form-control" min="{{ now()->addDay()->toDateString() }}" value="{{ now()->addDay()->toDateString() }}">
+                </div>
+                <div class="col-12 col-md-4 col-xl-4 d-grid">
+                    <button class="btn btn-ta" type="submit">Search Rooms</button>
+                </div>
                 <div class="col-12">
-                    <div class="alert alert-info soft-card border-0 mb-0">Room categories will appear here once rooms are added.</div>
+                    <small class="text-secondary d-block mb-2">All rooms follow a standard 2-guest setup. Extra bedding requests are subject to availability.</small>
+                    <div class="form-check mt-1">
+                        <input class="form-check-input" type="checkbox" name="available_only" value="1" id="availableOnlyHome" checked>
+                        <label class="form-check-label text-secondary small" for="availableOnlyHome">Show available rooms only</label>
+                    </div>
                 </div>
-            @endforelse
-        </div>
-    </section>
+            </form>
+        </section>
 
-    <section class="row g-3 mb-5">
-        <div class="col-sm-4">
-            <div class="soft-card p-3 p-lg-4 h-100">
-                <p class="ta-eyebrow mb-1">Inventory</p>
-                <h3 class="mb-0">{{ $platformStats['total_rooms'] }}</h3>
-                <p class="mb-0 text-secondary small">Total listed rooms</p>
+        <section class="mb-5">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <p class="ta-eyebrow mb-1">Categories</p>
+                    <h2 class="mb-0">Browse by Room Type</h2>
+                </div>
+                <a href="{{ route('rooms.search') }}" class="btn btn-sm btn-ta-outline">Open filters</a>
             </div>
-        </div>
-        <div class="col-sm-4">
-            <div class="soft-card p-3 p-lg-4 h-100">
-                <p class="ta-eyebrow mb-1">Bookable Now</p>
-                <h3 class="mb-0">{{ $platformStats['available_rooms'] }}</h3>
-                <p class="mb-0 text-secondary small">Rooms currently available</p>
+            <div class="row g-3">
+                @forelse($roomCategories as $category)
+                    <div class="col-6 col-lg-3">
+                        <a
+                            href="{{ route('rooms.search', ['type' => $category->type, 'available_only' => 1]) }}"
+                            class="soft-card result-card p-3 p-lg-4 category-link"
+                        >
+                            <span class="chip mb-2">Category</span>
+                            <h3 class="h5 mb-1">{{ $category->type }}</h3>
+                            <p class="text-secondary small mb-0">{{ $category->total }} room{{ $category->total === 1 ? '' : 's' }} available to explore</p>
+                        </a>
+                    </div>
+                @empty
+                    <div class="col-12">
+                        <div class="alert alert-info soft-card border-0 mb-0">Room categories will appear here once rooms are added.</div>
+                    </div>
+                @endforelse
             </div>
-        </div>
-        <div class="col-sm-4">
-            <div class="soft-card p-3 p-lg-4 h-100">
-                <p class="ta-eyebrow mb-1">Starting Rate</p>
-                <h3 class="mb-0">
-                    @if(!is_null($platformStats['starting_price']))
-                        &#8369;{{ number_format((float) $platformStats['starting_price'], 2) }}
-                    @else
-                        --
-                    @endif
-                </h3>
-                <p class="mb-0 text-secondary small">Lowest nightly rate</p>
+        </section>
+
+        <section class="row g-3 mb-5">
+            <div class="col-sm-4">
+                <div class="soft-card p-3 p-lg-4 h-100">
+                    <p class="ta-eyebrow mb-1">Inventory</p>
+                    <h3 class="mb-0">{{ $platformStats['total_rooms'] }}</h3>
+                    <p class="mb-0 text-secondary small">Total listed rooms</p>
+                </div>
             </div>
-        </div>
-    </section>
+            <div class="col-sm-4">
+                <div class="soft-card p-3 p-lg-4 h-100">
+                    <p class="ta-eyebrow mb-1">Bookable Now</p>
+                    <h3 class="mb-0">{{ $platformStats['available_rooms'] }}</h3>
+                    <p class="mb-0 text-secondary small">Rooms currently available</p>
+                </div>
+            </div>
+            <div class="col-sm-4">
+                <div class="soft-card p-3 p-lg-4 h-100">
+                    <p class="ta-eyebrow mb-1">Starting Rate</p>
+                    <h3 class="mb-0">
+                        @if(!is_null($platformStats['starting_price']))
+                            &#8369;{{ number_format((float) $platformStats['starting_price'], 2) }}
+                        @else
+                            --
+                        @endif
+                    </h3>
+                    <p class="mb-0 text-secondary small">Lowest nightly rate</p>
+                </div>
+            </div>
+        </section>
+    @endif
 
     <section class="d-flex justify-content-between align-items-center mb-3">
         <div>
@@ -328,7 +334,7 @@
                                     @if(filled($room->view_type))
                                         &middot; {{ $room->view_type }}
                                     @endif
-                                    &middot; Up to {{ $room->capacity }} guests
+                                    &middot; Standard occupancy: 2 guests
                                 </p>
                             </div>
                             <span class="badge-status {{ $room->is_available ? 'available' : 'unavailable' }}">

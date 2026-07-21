@@ -10,6 +10,7 @@ use App\Models\RoomDateDiscount;
 use App\Models\RoomStatus;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
@@ -64,7 +65,7 @@ class RoomController extends Controller
             'available' => Room::query()->availableForBooking()->count(),
             'unavailable' => Room::query()->unavailableForBooking()->count(),
             'active_discounts' => RoomDateDiscount::query()
-                ->whereDate('discount_date', '>=', now()->toDateString())
+                ->whereDate('discount_date_end', '>=', now()->toDateString())
                 ->count(),
         ];
 
@@ -95,8 +96,15 @@ class RoomController extends Controller
 
     public function dateDiscountsIndex(Request $request)
     {
-        $from = $this->normalizeDateInput($request->string('from')->toString()) ?? now()->toDateString();
-        $to = $this->normalizeDateInput($request->string('to')->toString()) ?? now()->addDays(90)->toDateString();
+        $fromInput = $this->normalizeDateInput($request->string('from')->toString());
+        $toInput = $this->normalizeDateInput($request->string('to')->toString());
+
+        if ($fromInput === null && $toInput === null) {
+            [$from, $to] = $this->resolveDefaultDateDiscountWindow();
+        } else {
+            $from = $fromInput ?? now()->toDateString();
+            $to = $toInput ?? now()->addDays(90)->toDateString();
+        }
 
         if ($to < $from) {
             [$from, $to] = [$to, $from];
@@ -112,10 +120,11 @@ class RoomController extends Controller
 
         $discountRowsQuery = RoomDateDiscount::query()
             ->join('rooms', 'rooms.room_id', '=', 'room_date_discounts.room_id')
-            ->whereDate('room_date_discounts.discount_date', '>=', $from)
-            ->whereDate('room_date_discounts.discount_date', '<=', $to)
+            ->whereDate('room_date_discounts.discount_date_start', '<=', $to)
+            ->whereDate('room_date_discounts.discount_date_end', '>=', $from)
             ->select([
-                'room_date_discounts.discount_date',
+                'room_date_discounts.discount_date_start',
+                'room_date_discounts.discount_date_end',
                 'room_date_discounts.discount_percent',
                 'room_date_discounts.room_id',
                 'rooms.name as room_name',
@@ -132,13 +141,18 @@ class RoomController extends Controller
         }
 
         $discountRawRows = $discountRowsQuery
-            ->orderBy('room_date_discounts.discount_date')
+            ->orderBy('room_date_discounts.discount_date_start')
+            ->orderBy('room_date_discounts.discount_date_end')
             ->orderBy('room_date_discounts.room_id')
             ->get();
 
-        $discountDailyGroups = $discountRawRows
-            ->groupBy(static fn ($row): string => Carbon::parse($row->discount_date)->toDateString())
-            ->map(static function ($rows, string $date): object {
+        $discountOverviewRanges = $discountRawRows
+            ->groupBy(static fn ($row): string => implode('|', [
+                Carbon::parse($row->discount_date_start)->toDateString(),
+                Carbon::parse($row->discount_date_end)->toDateString(),
+                number_format((float) $row->discount_percent, 2, '.', ''),
+            ]))
+            ->map(static function ($rows): object {
                 $roomIds = $rows->pluck('room_id')
                     ->map(static fn ($id): int => (int) $id)
                     ->unique()
@@ -175,7 +189,8 @@ class RoomController extends Controller
                 })->values();
 
                 return (object) [
-                    'date' => $date,
+                    'start_date' => Carbon::parse($rows->first()->discount_date_start)->toDateString(),
+                    'end_date' => Carbon::parse($rows->first()->discount_date_end)->toDateString(),
                     'room_ids' => $roomIds,
                     'room_labels' => $roomLabels,
                     'room_types' => $roomTypes,
@@ -187,47 +202,15 @@ class RoomController extends Controller
                     'signature' => $roomIds->join(',').'|'.$discountValues->join(','),
                 ];
             })
-            ->sortKeys();
-
-        $discountOverviewRanges = collect();
-        $activeRange = null;
-        foreach ($discountDailyGroups as $dailyGroup) {
-            $dailyDate = Carbon::parse($dailyGroup->date)->toDateString();
-
-            if ($activeRange !== null) {
-                $isNextDay = Carbon::parse($activeRange->end_date)->addDay()->toDateString() === $dailyDate;
-                $sameSignature = $activeRange->signature === $dailyGroup->signature;
-
-                if ($isNextDay && $sameSignature) {
-                    $activeRange->end_date = $dailyDate;
-                    continue;
-                }
-
-                $discountOverviewRanges->push($activeRange);
-            }
-
-            $activeRange = (object) [
-                'start_date' => $dailyDate,
-                'end_date' => $dailyDate,
-                'room_ids' => $dailyGroup->room_ids,
-                'room_labels' => $dailyGroup->room_labels,
-                'room_types' => $dailyGroup->room_types,
-                'discount_values' => $dailyGroup->discount_values,
-                'regular_price_min' => (float) $dailyGroup->regular_price_min,
-                'regular_price_max' => (float) $dailyGroup->regular_price_max,
-                'discounted_price_min' => (float) $dailyGroup->discounted_price_min,
-                'discounted_price_max' => (float) $dailyGroup->discounted_price_max,
-                'signature' => $dailyGroup->signature,
-            ];
-        }
-
-        if ($activeRange !== null) {
-            $discountOverviewRanges->push($activeRange);
-        }
+            ->sortBy(['start_date', 'end_date'])
+            ->values();
 
         $summary = [
             'entry_count' => $discountRawRows->count(),
-            'date_count' => $discountRawRows->pluck('discount_date')->map(static fn ($date) => Carbon::parse($date)->toDateString())->unique()->count(),
+            'date_count' => $discountRawRows
+                ->map(static fn ($row): string => Carbon::parse($row->discount_date_start)->toDateString().'|'.Carbon::parse($row->discount_date_end)->toDateString())
+                ->unique()
+                ->count(),
             'room_count' => $discountRawRows->pluck('room_id')->unique()->count(),
         ];
 
@@ -243,6 +226,8 @@ class RoomController extends Controller
     public function updateDateDiscountRange(Request $request)
     {
         $validated = $request->validate([
+            'original_start_date' => ['required', 'date'],
+            'original_end_date' => ['required', 'date', 'after_or_equal:original_start_date'],
             'start_date' => ['required', 'date'],
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
             'room_ids' => ['required', 'array', 'min:1'],
@@ -255,8 +240,11 @@ class RoomController extends Controller
             'room_ids.required' => 'Missing affected rooms for this discount.',
             'room_ids.min' => 'At least one room is required.',
             'discount_percent.required' => 'Please enter a discount percentage.',
+            'original_start_date.required' => 'Missing original discount range.',
         ]);
 
+        $originalStart = Carbon::parse($validated['original_start_date'])->startOfDay();
+        $originalEnd = Carbon::parse($validated['original_end_date'])->startOfDay();
         $start = Carbon::parse($validated['start_date'])->startOfDay();
         $end = Carbon::parse($validated['end_date'])->startOfDay();
         if ($start->diffInDays($end) > 366) {
@@ -272,15 +260,33 @@ class RoomController extends Controller
             ->all();
 
         $discountPercent = round((float) $validated['discount_percent'], 2);
-        $affectedRows = RoomDateDiscount::query()
-            ->whereIn('room_id', $roomIds)
-            ->whereDate('discount_date', '>=', $start->toDateString())
-            ->whereDate('discount_date', '<=', $end->toDateString())
-            ->update([
+        $now = now();
+
+        $rows = [];
+        foreach ($roomIds as $roomId) {
+            $rows[] = [
+                'room_id' => $roomId,
+                'discount_date_start' => $start->toDateString(),
+                'discount_date_end' => $end->toDateString(),
                 'discount_percent' => $discountPercent,
-                'admin_id' => (int) $request->user()->id,
-                'updated_at' => now(),
-            ]);
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+
+        DB::transaction(function () use ($roomIds, $originalStart, $originalEnd, $rows): void {
+            RoomDateDiscount::query()
+                ->whereIn('room_id', $roomIds)
+                ->whereDate('discount_date_start', '<=', $originalEnd->toDateString())
+                ->whereDate('discount_date_end', '>=', $originalStart->toDateString())
+                ->delete();
+
+            RoomDateDiscount::query()->upsert(
+                $rows,
+                ['room_id', 'discount_date_start', 'discount_date_end'],
+                ['discount_percent', 'updated_at']
+            );
+        });
 
         $query = array_filter([
             'from' => $validated['from'] ?? null,
@@ -292,9 +298,52 @@ class RoomController extends Controller
             ->route('admin.rooms.date-discounts.index', $query)
             ->with(
                 'status',
-                $affectedRows > 0
-                    ? "Updated {$affectedRows} discounted room-date entries to {$discountPercent}%."
-                    : 'No matching date discounts were updated.'
+                'Updated date discount to '.$discountPercent.'% for '.count($roomIds).' room(s).'
+            );
+    }
+
+    public function destroyDateDiscountRange(Request $request)
+    {
+        $validated = $request->validate([
+            'original_start_date' => ['required', 'date'],
+            'original_end_date' => ['required', 'date', 'after_or_equal:original_start_date'],
+            'room_ids' => ['required', 'array', 'min:1'],
+            'room_ids.*' => ['integer', 'exists:rooms,room_id'],
+            'from' => ['nullable', 'date'],
+            'to' => ['nullable', 'date'],
+            'q' => ['nullable', 'string', 'max:100'],
+        ], [
+            'room_ids.required' => 'Missing affected rooms for this discount.',
+            'room_ids.min' => 'At least one room is required.',
+        ]);
+
+        $originalStart = Carbon::parse($validated['original_start_date'])->startOfDay();
+        $originalEnd = Carbon::parse($validated['original_end_date'])->startOfDay();
+        $roomIds = collect((array) $validated['room_ids'])
+            ->map(static fn ($id): int => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        $deletedRows = RoomDateDiscount::query()
+            ->whereIn('room_id', $roomIds)
+            ->whereDate('discount_date_start', '<=', $originalEnd->toDateString())
+            ->whereDate('discount_date_end', '>=', $originalStart->toDateString())
+            ->delete();
+
+        $query = array_filter([
+            'from' => $validated['from'] ?? null,
+            'to' => $validated['to'] ?? null,
+            'q' => isset($validated['q']) ? trim((string) $validated['q']) : null,
+        ], static fn ($value) => $value !== null && $value !== '');
+
+        return redirect()
+            ->route('admin.rooms.date-discounts.index', $query)
+            ->with(
+                'status',
+                $deletedRows > 0
+                    ? 'Deleted date discount entries for '.count($roomIds).' room(s).'
+                    : 'No matching date discount entries were deleted.'
             );
     }
 
@@ -310,6 +359,7 @@ class RoomController extends Controller
     public function store(StoreRoomRequest $request)
     {
         $data = $request->validated();
+        $data['capacity'] = Room::standardGuestCapacity();
 
         // Default new rooms to the ready-for-use room status.
         if (!isset($data['room_status_id'])) {
@@ -341,6 +391,7 @@ class RoomController extends Controller
     public function update(UpdateRoomRequest $request, Room $room)
     {
         $data = $request->validated();
+        $data['capacity'] = Room::standardGuestCapacity();
 
         if (array_key_exists('room_status_id', $data) && (int) $data['room_status_id'] !== (int) $room->room_status_id) {
             $data['admin_id'] = $request->user()->id;
@@ -452,43 +503,38 @@ class RoomController extends Controller
 
         $start = Carbon::parse($validated['discount_start'])->startOfDay();
         $end = Carbon::parse($validated['discount_end'])->startOfDay();
-        $dates = [];
-        $cursor = $start->copy();
-        while ($cursor->lte($end)) {
-            $dates[] = $cursor->toDateString();
-            $cursor->addDay();
-        }
 
         $discountPercent = round((float) $validated['discount_percent'], 2);
-        $adminId = (int) $request->user()->id;
         $now = now();
         $rows = [];
 
         foreach ($roomIds as $roomId) {
-            foreach ($dates as $discountDate) {
-                $rows[] = [
-                    'room_id' => $roomId,
-                    'discount_date' => $discountDate,
-                    'discount_percent' => $discountPercent,
-                    'admin_id' => $adminId,
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ];
-            }
+            $rows[] = [
+                'room_id' => $roomId,
+                'discount_date_start' => $start->toDateString(),
+                'discount_date_end' => $end->toDateString(),
+                'discount_percent' => $discountPercent,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
         }
 
-        RoomDateDiscount::query()->upsert(
-            $rows,
-            ['room_id', 'discount_date'],
-            ['discount_percent', 'admin_id', 'updated_at']
-        );
+        DB::transaction(function () use ($roomIds, $start, $end, $rows): void {
+            RoomDateDiscount::query()
+                ->whereIn('room_id', $roomIds)
+                ->whereDate('discount_date_start', '<=', $end->toDateString())
+                ->whereDate('discount_date_end', '>=', $start->toDateString())
+                ->delete();
+
+            DB::table('room_date_discounts')->insert($rows);
+        });
 
         $roomCount = count($roomIds);
-        $dayCount = count($dates);
+        $statusMessage = "Discount applied: {$discountPercent}% for {$roomCount} room(s).";
 
         return redirect()
             ->route('admin.rooms.index')
-            ->with('status', "Discount applied: {$discountPercent}% for {$roomCount} room(s) across {$dayCount} day(s).");
+            ->with('status', $statusMessage);
     }
 
     private function roomStatusOptionsQuery()
@@ -508,5 +554,34 @@ class RoomController extends Controller
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    private function resolveDefaultDateDiscountWindow(): array
+    {
+        $today = now()->toDateString();
+        $defaultEnd = now()->addDays(90)->toDateString();
+
+        $hasDiscountsInDefaultWindow = RoomDateDiscount::query()
+            ->whereDate('discount_date_start', '<=', $defaultEnd)
+            ->whereDate('discount_date_end', '>=', $today)
+            ->exists();
+
+        if ($hasDiscountsInDefaultWindow) {
+            return [$today, $defaultEnd];
+        }
+
+        $firstUpcomingDiscountDate = RoomDateDiscount::query()
+            ->whereDate('discount_date_end', '>=', $today)
+            ->orderBy('discount_date_start')
+            ->value('discount_date_start');
+
+        if ($firstUpcomingDiscountDate === null) {
+            return [$today, $defaultEnd];
+        }
+
+        $rangeStart = Carbon::parse($firstUpcomingDiscountDate)->toDateString();
+        $rangeEnd = Carbon::parse($rangeStart)->addDays(90)->toDateString();
+
+        return [$rangeStart, $rangeEnd];
     }
 }

@@ -155,7 +155,7 @@
                         <th>Name</th>
                         <th>Room Type</th>
                         <th>View</th>
-                        <th>Capacity</th>
+                        <th>Standard Occupancy</th>
                         <th>Price</th>
                         <th>Room Status</th>
                         <th>Availability</th>
@@ -169,7 +169,7 @@
                             <td>{{ $room->name }}</td>
                             <td>{{ $room->type }}</td>
                             <td>{{ $room->view_type ?: '-' }}</td>
-                            <td>{{ $room->capacity }}</td>
+                            <td>2 guests</td>
                             <td>
                                 <div>&#8369;{{ number_format($room->price_per_night, 2) }} / night</div>
                             </td>
@@ -210,7 +210,6 @@
                                         data-room-view-type="{{ $room->view_type ?? '' }}"
                                         data-room-description="{{ $room->description ?? '' }}"
                                         data-room-price-night="{{ number_format((float) $room->price_per_night, 2, '.', '') }}"
-                                        data-room-capacity="{{ $room->capacity }}"
                                         data-room-image="{{ $room->image ?? '' }}"
                                     >
                                         <i class="bi bi-pencil-square"></i>
@@ -277,8 +276,9 @@
                                 <input type="number" step="0.01" class="form-control" name="price_per_night" id="edit_room_price_night" required>
                             </div>
                             <div class="col-md-3">
-                                <label class="form-label">Capacity</label>
-                                <input type="number" min="1" class="form-control" name="capacity" id="edit_room_capacity" required>
+                                <label class="form-label">Standard occupancy</label>
+                                <input type="text" class="form-control" value="2 guests" disabled>
+                                <small class="text-secondary">Extra bedding requests are handled separately.</small>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label">Image URL</label>
@@ -509,7 +509,6 @@
                 viewType: @json(old('view_type')),
                 description: @json(old('description')),
                 priceNight: @json(old('price_per_night')),
-                capacity: @json(old('capacity')),
                 image: @json(old('image')),
             };
 
@@ -519,7 +518,6 @@
             const fieldViewType = document.getElementById('edit_room_view_type');
             const fieldDescription = document.getElementById('edit_room_description');
             const fieldPriceNight = document.getElementById('edit_room_price_night');
-            const fieldCapacity = document.getElementById('edit_room_capacity');
             const fieldImage = document.getElementById('edit_room_image');
 
             editRoomModalEl.addEventListener('show.bs.modal', function (event) {
@@ -534,7 +532,6 @@
                 const viewType = trigger.getAttribute('data-room-view-type') || '';
                 const description = trigger.getAttribute('data-room-description') || '';
                 const priceNight = trigger.getAttribute('data-room-price-night') || '0';
-                const capacity = trigger.getAttribute('data-room-capacity') || '1';
                 const image = trigger.getAttribute('data-room-image') || '';
 
                 formEl.action = updateUrlTemplate.replace('__ROOM__', roomId);
@@ -544,7 +541,6 @@
                 fieldViewType.value = viewType;
                 fieldDescription.value = description;
                 fieldPriceNight.value = priceNight;
-                fieldCapacity.value = capacity;
                 fieldImage.value = image;
             });
 
@@ -559,7 +555,6 @@
                     if (oldFormValues.viewType !== null) fieldViewType.value = oldFormValues.viewType;
                     if (oldFormValues.description !== null) fieldDescription.value = oldFormValues.description;
                     if (oldFormValues.priceNight !== null) fieldPriceNight.value = oldFormValues.priceNight;
-                    if (oldFormValues.capacity !== null) fieldCapacity.value = oldFormValues.capacity;
                     if (oldFormValues.image !== null) fieldImage.value = oldFormValues.image;
                 }
             }

@@ -32,8 +32,9 @@
                 <input type="number" step="0.01" class="form-control" name="price_per_night" value="{{ old('price_per_night') }}" required>
             </div>
             <div class="col-md-3">
-                <label class="form-label">Capacity</label>
-                <input type="number" class="form-control" name="capacity" min="1" value="{{ old('capacity') }}" required>
+                <label class="form-label">Standard occupancy</label>
+                <input type="text" class="form-control" value="2 guests" disabled>
+                <small class="text-secondary">Extra bedding requests are handled separately.</small>
             </div>
             <div class="col-md-3">
                 <label class="form-label">Image URL</label>

@@ -28,4 +28,5 @@ class Admin extends Account
     {
         return $this->hasMany(Room::class, 'admin_id', 'admin_id');
     }
+
 }

@@ -18,18 +18,11 @@ class StoreBookingRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        $hasAdults = $this->filled('adults');
-        $hasKids = $this->filled('kids');
-
-        if ($hasAdults || $hasKids) {
-            $adultCount = max(0, (int) $this->input('adults', 0));
-            $kidCount = max(0, (int) $this->input('kids', 0));
-
-            $this->merge([
-                'guests' => max(1, $adultCount + $kidCount),
-            ]);
-        }
-
+        $this->merge([
+            'guests' => Room::standardGuestCapacity(),
+            'adults' => Room::standardGuestCapacity(),
+            'kids' => 0,
+        ]);
     }
 
     public function rules(): array
