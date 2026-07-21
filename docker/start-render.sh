@@ -3,6 +3,30 @@ set -eu
 
 cd /var/www/html
 
+if [ -z "${APP_URL:-}" ] && [ -n "${RAILWAY_PUBLIC_DOMAIN:-}" ]; then
+  export APP_URL="https://${RAILWAY_PUBLIC_DOMAIN}"
+fi
+
+if [ -z "${DB_HOST:-}" ] && [ -n "${MYSQLHOST:-}" ]; then
+  export DB_HOST="${MYSQLHOST}"
+fi
+
+if [ -z "${DB_PORT:-}" ] && [ -n "${MYSQLPORT:-}" ]; then
+  export DB_PORT="${MYSQLPORT}"
+fi
+
+if [ -z "${DB_DATABASE:-}" ] && [ -n "${MYSQLDATABASE:-}" ]; then
+  export DB_DATABASE="${MYSQLDATABASE}"
+fi
+
+if [ -z "${DB_USERNAME:-}" ] && [ -n "${MYSQLUSER:-}" ]; then
+  export DB_USERNAME="${MYSQLUSER}"
+fi
+
+if [ -z "${DB_PASSWORD:-}" ] && [ -n "${MYSQLPASSWORD:-}" ]; then
+  export DB_PASSWORD="${MYSQLPASSWORD}"
+fi
+
 if [ "${APP_ENV:-production}" = "production" ] && [ "${DB_CONNECTION:-sqlite}" = "sqlite" ]; then
   echo "[startup] Refusing to start with SQLite in production."
   echo "[startup] Set DB_CONNECTION=mysql and provide persistent database credentials."
